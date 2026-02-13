@@ -1,0 +1,5 @@
+{
+  "name": "KidsLedger Pro - 小朋友智慧記帳王",
+  "description": "這是一個專為小朋友設計的記帳與理財教育工具，支援多人管理、收支追蹤、以及股票投資紀錄，並整合 Google Sheets 作為雲端資料庫。",
+  "requestFramePermissions": []
+}
