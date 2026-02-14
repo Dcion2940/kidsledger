@@ -327,35 +327,30 @@ const App: React.FC = () => {
     setChildToDelete(null);
   };
 
-  const escapeCsvCell = (value: string | number) => `"${String(value ?? '').replace(/"/g, '""')}"`;
-
-  const downloadCsv = (filename: string, rows: Array<Array<string | number>>) => {
-    const csvContent = "\uFEFF" + rows.map((row) => row.map(escapeCsvCell).join(',')).join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = filename;
-    link.click();
-    URL.revokeObjectURL(link.href);
-  };
-
-  const exportToExcel = () => {
+  const exportToExcel = async () => {
+    const XLSX = await import('xlsx');
     const dateTag = new Date().toISOString().split('T')[0];
+    const workbook = XLSX.utils.book_new();
 
-    downloadCsv(`KidsLedger_Children_${dateTag}.csv`, [
+    const childrenSheet = XLSX.utils.aoa_to_sheet([
       ['ID', 'Name', 'Avatar'],
       ...children.map((c) => [c.id, c.name, c.avatar])
     ]);
+    XLSX.utils.book_append_sheet(workbook, childrenSheet, 'Children');
 
-    downloadCsv(`KidsLedger_Transactions_${dateTag}.csv`, [
+    const transactionsSheet = XLSX.utils.aoa_to_sheet([
       ['ID', 'ChildId', 'Date', 'Type', 'Category', 'Amount', 'Description'],
       ...transactions.map((t) => [t.id, t.childId, t.date, t.type, t.category, t.amount, t.description])
     ]);
+    XLSX.utils.book_append_sheet(workbook, transactionsSheet, 'Transactions');
 
-    downloadCsv(`KidsLedger_Investments_${dateTag}.csv`, [
+    const investmentsSheet = XLSX.utils.aoa_to_sheet([
       ['ID', 'ChildId', 'Date', 'Symbol', 'CompanyName', 'Quantity', 'Price', 'TotalAmount', 'Action'],
       ...investments.map((i) => [i.id, i.childId, i.date, i.symbol, i.companyName, i.quantity, i.price, i.totalAmount, i.action])
     ]);
+    XLSX.utils.book_append_sheet(workbook, investmentsSheet, 'Investments');
+
+    XLSX.writeFile(workbook, `KidsLedger_GoogleSheet_Template_${dateTag}.xlsx`);
   };
 
   const handleAddTransaction = async (t: Transaction) => {
@@ -450,8 +445,8 @@ const App: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen flex bg-[#f8fafc]">
-      <aside className="w-64 bg-white border-r border-slate-200 flex-col hidden lg:flex shadow-sm">
+    <div className="h-screen flex bg-[#f8fafc]">
+      <aside className="w-64 h-screen sticky top-0 bg-white border-r border-slate-200 flex-col hidden lg:flex shadow-sm">
         <div className="p-8 flex items-center gap-4">
           <div className="bg-blue-600 p-2.5 rounded-2xl shadow-lg shadow-blue-200">
             <Wallet className="w-6 h-6 text-white" />
@@ -468,9 +463,9 @@ const App: React.FC = () => {
           </button>
         </nav>
 
-        <div className="p-6 mt-4 space-y-4">
+        <div className="p-6 mt-auto space-y-4 pb-8">
           <button onClick={exportToExcel} className="flex items-center gap-3 px-5 py-3 text-sm font-bold text-emerald-600 bg-emerald-50 rounded-xl hover:bg-emerald-100 transition w-full">
-            <Download className="w-4 h-4" /> 匯出 Google Sheet 檔
+            <Download className="w-4 h-4" /> 匯出 Google Sheet 樣板
           </button>
           <button onClick={() => setShowSettings(true)} className="flex items-center gap-3 px-5 py-3 text-sm font-bold text-slate-600 bg-slate-100 rounded-xl hover:bg-slate-200 transition w-full">
             <Settings className="w-4 h-4" /> 系統與小朋友設定
@@ -491,7 +486,7 @@ const App: React.FC = () => {
         </div>
       </aside>
 
-      <main className="flex-1 overflow-y-auto">
+      <main className="flex-1 h-screen overflow-y-auto">
         <header className="sticky top-0 bg-white/70 backdrop-blur-xl border-b border-slate-200/50 p-4 z-20">
           <div className="w-full flex items-center justify-between px-6">
             <div className="flex bg-slate-100 p-1.5 rounded-[1.5rem] shadow-inner overflow-x-auto no-scrollbar">

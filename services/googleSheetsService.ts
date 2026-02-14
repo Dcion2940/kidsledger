@@ -47,9 +47,19 @@ export class GoogleSheetsService {
     return index !== -1 ? index + 1 : null;
   }
 
+  private stripHeader(rows: any[][], expectedFirstColumn: string): any[][] {
+    if (!rows.length) return rows;
+    const firstCell = String(rows[0]?.[0] ?? '').trim().toLowerCase();
+    if (firstCell === expectedFirstColumn.toLowerCase()) {
+      return rows.slice(1);
+    }
+    return rows;
+  }
+
   async getChildren(): Promise<Child[]> {
-    const data = await this.request('Children!A2:C');
-    return (data.values || [])
+    const data = await this.request('Children!A:C');
+    const rows = this.stripHeader(data.values || [], 'ID');
+    return rows
       .filter((row: any[]) => row[0] && row[1])
       .map((row: any[]) => ({
         id: row[0],
@@ -70,8 +80,9 @@ export class GoogleSheetsService {
   }
 
   async getTransactions(): Promise<Transaction[]> {
-    const data = await this.request('Transactions!A2:G');
-    return (data.values || [])
+    const data = await this.request('Transactions!A:G');
+    const rows = this.stripHeader(data.values || [], 'ID');
+    return rows
       .filter((row: any[]) => row[0])
       .map((row: any[]) => ({
         id: row[0],
@@ -106,8 +117,9 @@ export class GoogleSheetsService {
   }
 
   async getInvestments(): Promise<Investment[]> {
-    const data = await this.request('Investments!A2:I');
-    return (data.values || [])
+    const data = await this.request('Investments!A:I');
+    const rows = this.stripHeader(data.values || [], 'ID');
+    return rows
       .filter((row: any[]) => row[0])
       .map((row: any[]) => ({
         id: row[0],
