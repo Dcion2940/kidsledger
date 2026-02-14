@@ -22,7 +22,8 @@ import {
   UserMinus,
   X,
   Plus,
-  AlertTriangle
+  AlertTriangle,
+  Menu
 } from 'lucide-react';
 import { 
   PieChart,
@@ -77,6 +78,7 @@ const App: React.FC = () => {
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [editingInvestment, setEditingInvestment] = useState<Investment | null>(null);
   const [childToDelete, setChildToDelete] = useState<Child | null>(null);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   
   const [newChildName, setNewChildName] = useState('');
   const [isAddingChild, setIsAddingChild] = useState(false);
@@ -488,25 +490,47 @@ const App: React.FC = () => {
 
       <main className="flex-1 h-screen overflow-y-auto">
         <header className="sticky top-0 bg-white/70 backdrop-blur-xl border-b border-slate-200/50 p-4 z-20">
-          <div className="w-full flex items-center justify-between px-6">
-            <div className="flex bg-slate-100 p-1.5 rounded-[1.5rem] shadow-inner overflow-x-auto no-scrollbar">
-              {children.map(child => (
-                <button
-                  key={child.id}
-                  onClick={() => setSelectedChildId(child.id)}
-                  className={`flex items-center gap-2.5 px-5 py-2.5 rounded-[1.25rem] text-sm font-black transition-all whitespace-nowrap ${selectedChildId === child.id ? 'bg-white text-blue-600 shadow-md scale-105' : 'text-slate-400 hover:text-slate-600'}`}
-                >
-                  <img src={child.avatar} className="w-6 h-6 rounded-lg bg-slate-200" alt={child.name} />
-                  {child.name}
-                </button>
-              ))}
+          <div className="w-full px-4 md:px-6">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex-1 flex bg-slate-100 p-1.5 rounded-[1.5rem] shadow-inner overflow-x-auto no-scrollbar">
+                {children.map(child => (
+                  <button
+                    key={child.id}
+                    onClick={() => setSelectedChildId(child.id)}
+                    className={`flex items-center gap-2.5 px-5 py-2.5 rounded-[1.25rem] text-sm font-black transition-all whitespace-nowrap ${selectedChildId === child.id ? 'bg-white text-blue-600 shadow-md scale-105' : 'text-slate-400 hover:text-slate-600'}`}
+                  >
+                    <img src={child.avatar} className="w-6 h-6 rounded-lg bg-slate-200" alt={child.name} />
+                    {child.name}
+                  </button>
+                ))}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setMobileMenuOpen(true)}
+                className="lg:hidden p-3 rounded-2xl bg-slate-100 text-slate-600 hover:bg-slate-200 transition"
+                aria-label="開啟選單"
+              >
+                <Menu className="w-5 h-5" />
+              </button>
+
+              <div
+                className={`hidden lg:flex items-center gap-2 px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border ${syncStatus === 'success' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : syncStatus === 'error' ? 'bg-rose-50 text-rose-600 border-rose-100' : 'bg-amber-50 text-amber-600 border-amber-100'}`}
+                title={syncError || ''}
+              >
+                <Database className={`w-3 h-3 ${syncStatus === 'syncing' ? 'animate-pulse' : ''}`} />
+                {syncStatus === 'success' ? '雲端同步正常' : syncStatus === 'error' ? '同步失敗' : syncStatus === 'syncing' ? '同步中...' : '未連線'}
+              </div>
             </div>
-            <div
-              className={`flex items-center gap-2 px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border ${syncStatus === 'success' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : syncStatus === 'error' ? 'bg-rose-50 text-rose-600 border-rose-100' : 'bg-amber-50 text-amber-600 border-amber-100'}`}
-              title={syncError || ''}
-            >
-              <Database className={`w-3 h-3 ${syncStatus === 'syncing' ? 'animate-pulse' : ''}`} />
-              {syncStatus === 'success' ? '雲端同步正常' : syncStatus === 'error' ? '同步失敗' : syncStatus === 'syncing' ? '同步中...' : '未連線'}
+
+            <div className="flex justify-end mt-3 lg:hidden">
+              <div
+                className={`flex items-center gap-2 px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border ${syncStatus === 'success' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : syncStatus === 'error' ? 'bg-rose-50 text-rose-600 border-rose-100' : 'bg-amber-50 text-amber-600 border-amber-100'}`}
+                title={syncError || ''}
+              >
+                <Database className={`w-3 h-3 ${syncStatus === 'syncing' ? 'animate-pulse' : ''}`} />
+                {syncStatus === 'success' ? '雲端同步正常' : syncStatus === 'error' ? '同步失敗' : syncStatus === 'syncing' ? '同步中...' : '未連線'}
+              </div>
             </div>
           </div>
         </header>
@@ -636,6 +660,89 @@ const App: React.FC = () => {
           )}
         </div>
       </main>
+
+      <div className={`fixed inset-0 z-[80] lg:hidden transition ${mobileMenuOpen ? '' : 'pointer-events-none'}`}>
+        <div
+          className={`absolute inset-0 bg-slate-900/40 transition-opacity ${mobileMenuOpen ? 'opacity-100' : 'opacity-0'}`}
+          onClick={() => setMobileMenuOpen(false)}
+        />
+        <aside
+          className={`absolute right-0 top-0 h-full w-[82%] max-w-sm bg-white shadow-2xl border-l border-slate-200 p-6 flex flex-col transition-transform duration-300 ${mobileMenuOpen ? 'translate-x-0' : 'translate-x-full'}`}
+        >
+          <div className="flex items-center justify-between mb-6">
+            <span className="font-black text-xl text-slate-800">功能選單</span>
+            <button
+              type="button"
+              onClick={() => setMobileMenuOpen(false)}
+              className="p-2 rounded-xl hover:bg-slate-100 text-slate-500"
+              aria-label="關閉選單"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          <div className="space-y-3">
+            <button
+              onClick={() => {
+                setActiveTab('DASHBOARD');
+                setMobileMenuOpen(false);
+              }}
+              className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl font-bold transition-all ${activeTab === 'DASHBOARD' ? 'bg-blue-50 text-blue-600' : 'text-slate-500 bg-slate-50'}`}
+            >
+              <BarChart3 className="w-5 h-5" /> 帳務總覽
+            </button>
+            <button
+              onClick={() => {
+                setActiveTab('INVESTMENTS');
+                setMobileMenuOpen(false);
+              }}
+              className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl font-bold transition-all ${activeTab === 'INVESTMENTS' ? 'bg-orange-50 text-orange-600' : 'text-slate-500 bg-slate-50'}`}
+            >
+              <PiggyBank className="w-5 h-5" /> 股票投資
+            </button>
+          </div>
+
+          <div className="mt-auto space-y-3">
+            <button
+              onClick={async () => {
+                await exportToExcel();
+                setMobileMenuOpen(false);
+              }}
+              className="w-full flex items-center justify-center gap-2 px-5 py-3 text-sm font-bold text-emerald-600 bg-emerald-50 rounded-xl hover:bg-emerald-100 transition"
+            >
+              <Download className="w-4 h-4" /> 匯出 Google Sheet 樣板
+            </button>
+            <button
+              onClick={() => {
+                setShowSettings(true);
+                setMobileMenuOpen(false);
+              }}
+              className="w-full flex items-center justify-center gap-2 px-5 py-3 text-sm font-bold text-slate-600 bg-slate-100 rounded-xl hover:bg-slate-200 transition"
+            >
+              <Settings className="w-4 h-4" /> 系統與小朋友設定
+            </button>
+
+            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
+              <div className="flex items-center gap-3 mb-3">
+                <img src={user.picture} className="w-10 h-10 rounded-xl border-2 border-white shadow-sm" alt="User" />
+                <div className="overflow-hidden">
+                  <p className="text-sm font-black truncate text-slate-800">{user.name}</p>
+                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">管理者</p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  handleLogout();
+                  setMobileMenuOpen(false);
+                }}
+                className="w-full flex items-center justify-center gap-2 text-xs text-rose-500 font-black hover:bg-rose-50 py-2.5 rounded-xl transition"
+              >
+                <LogOut className="w-4 h-4" /> 登出
+              </button>
+            </div>
+          </div>
+        </aside>
+      </div>
 
       {/* 自定義刪除確認視窗 */}
       {childToDelete && (
