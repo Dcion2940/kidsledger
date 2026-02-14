@@ -25,9 +25,10 @@ View your app in AI Studio: https://ai.studio/apps/drive/169EmU0wIsNvelWvWcVyVvL
 
 ## Deploy to GitHub Pages
 
-1. In GitHub repository **Settings > Secrets and variables > Actions**, add:
-   - `VITE_GOOGLE_CLIENT_ID`
+1. Optional: In GitHub repository **Settings > Secrets and variables > Actions**, add:
+   - `VITE_GOOGLE_CLIENT_ID` (if you want a default client ID for all users)
    - `GEMINI_API_KEY` (optional, for AI advice feature)
-2. Push to `main`. GitHub Actions will build and deploy automatically.
-3. In GitHub repo settings, open **Pages** and set **Build and deployment**:
+2. If `VITE_GOOGLE_CLIENT_ID` is not set, users can enter their own Google Client ID on the login page (saved in localStorage per browser).
+3. Push to `main`. GitHub Actions will build and deploy automatically.
+4. In GitHub repo settings, open **Pages** and set **Build and deployment**:
    - Source: `GitHub Actions`

@@ -43,7 +43,10 @@ declare global {
 }
 
 const App: React.FC = () => {
-  const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined;
+  const envGoogleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined;
+  const [localGoogleClientId, setLocalGoogleClientId] = useState<string>(() => localStorage.getItem('google_client_id') || '');
+  const [clientIdInput, setClientIdInput] = useState<string>(() => localStorage.getItem('google_client_id') || '');
+  const googleClientId = envGoogleClientId || localGoogleClientId;
   const [user, setUser] = useState<UserProfile | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState('DASHBOARD');
@@ -192,6 +195,18 @@ const App: React.FC = () => {
     }
 
     tokenClientRef.current.requestAccessToken({ prompt: 'consent' });
+  };
+
+  const handleSaveLocalClientId = () => {
+    const value = clientIdInput.trim();
+    if (!value) {
+      setAuthError('請先輸入 Google Client ID');
+      return;
+    }
+
+    localStorage.setItem('google_client_id', value);
+    setLocalGoogleClientId(value);
+    setAuthError(null);
   };
 
   const handleLogout = () => {
@@ -349,6 +364,25 @@ const App: React.FC = () => {
             使用 Google 登入
           </button>
           {authError && <p className="mt-4 text-sm text-rose-600 font-bold">{authError}</p>}
+          {!envGoogleClientId && (
+            <div className="mt-6 text-left bg-slate-50 rounded-2xl p-4 border border-slate-200">
+              <p className="text-xs font-bold text-slate-500 mb-2">未設定網站預設 Client ID，可在此輸入你的 Google OAuth Web Client ID：</p>
+              <input
+                type="text"
+                value={clientIdInput}
+                onChange={(e) => setClientIdInput(e.target.value)}
+                placeholder="xxxx.apps.googleusercontent.com"
+                className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-sm font-mono focus:outline-none focus:border-blue-500"
+              />
+              <button
+                type="button"
+                onClick={handleSaveLocalClientId}
+                className="mt-3 w-full bg-blue-600 text-white py-2 rounded-xl font-bold hover:bg-blue-700 transition"
+              >
+                儲存 Client ID（僅此瀏覽器）
+              </button>
+            </div>
+          )}
         </div>
       </div>
     );
