@@ -16,16 +16,18 @@ View your app in AI Studio: https://ai.studio/apps/drive/169EmU0wIsNvelWvWcVyVvL
 1. Install dependencies:
    `npm install`
 2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
+3. Set `VITE_GOOGLE_CLIENT_ID` in `.env.local` (Google OAuth Web client ID)
+4. Add OAuth authorized JavaScript origins in Google Cloud Console:
+   - `http://localhost:3000`
+   - `https://dcion2940.github.io`
+5. Run the app:
    `npm run dev`
 
 ## Deploy to GitHub Pages
 
-1. Install dependencies:
-   `npm install`
-2. Build and deploy to `gh-pages` branch:
-   `npm run deploy`
+1. In GitHub repository **Settings > Secrets and variables > Actions**, add:
+   - `VITE_GOOGLE_CLIENT_ID`
+   - `GEMINI_API_KEY` (optional, for AI advice feature)
+2. Push to `main`. GitHub Actions will build and deploy automatically.
 3. In GitHub repo settings, open **Pages** and set **Build and deployment**:
-   - Source: `Deploy from a branch`
-   - Branch: `gh-pages`
-   - Folder: `/ (root)`
+   - Source: `GitHub Actions`

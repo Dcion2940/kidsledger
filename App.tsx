@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Transaction, Investment, Child, UserProfile, TransactionType, AppSettings } from './types';
 import TransactionForm from './components/TransactionForm';
 import InvestmentRecord from './components/InvestmentRecord';
@@ -36,8 +36,16 @@ const DEFAULT_CHILDREN: Child[] = [
   { id: '1', name: '小明', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Ming' }
 ];
 
+declare global {
+  interface Window {
+    google?: any;
+  }
+}
+
 const App: React.FC = () => {
+  const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined;
   const [user, setUser] = useState<UserProfile | null>(null);
+  const [authError, setAuthError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState('DASHBOARD');
   const [children, setChildren] = useState<Child[]>([]);
   const [selectedChildId, setSelectedChildId] = useState('');
@@ -54,6 +62,7 @@ const App: React.FC = () => {
   
   const [newChildName, setNewChildName] = useState('');
   const [isAddingChild, setIsAddingChild] = useState(false);
+  const tokenClientRef = useRef<any>(null);
 
   const sheetsService = useMemo(() => {
     if (user && settings.googleSheetId) {
@@ -102,16 +111,96 @@ const App: React.FC = () => {
     fetchData();
   }, [sheetsService]);
 
-  const handleLogin = () => {
-    setUser({
-      name: '家長王先生',
-      email: 'parent@example.com',
-      picture: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Parent',
-      accessToken: 'MOCK_TOKEN'
+  const fetchUserProfile = async (accessToken: string) => {
+    const response = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+      headers: {
+        Authorization: `Bearer ${accessToken}`
+      }
     });
+
+    if (!response.ok) {
+      throw new Error('無法取得 Google 使用者資料');
+    }
+
+    const profile = await response.json();
+    setUser({
+      name: profile.name || profile.email || 'Google User',
+      email: profile.email || '',
+      picture: profile.picture || 'https://api.dicebear.com/7.x/avataaars/svg?seed=Parent',
+      accessToken
+    });
+    setAuthError(null);
   };
 
-  const handleLogout = () => setUser(null);
+  useEffect(() => {
+    if (!googleClientId) {
+      setAuthError('尚未設定 Google Client ID（VITE_GOOGLE_CLIENT_ID）');
+      return;
+    }
+
+    let cancelled = false;
+
+    const initGoogleTokenClient = () => {
+      if (cancelled) return true;
+      if (!window.google?.accounts?.oauth2) return false;
+
+      tokenClientRef.current = window.google.accounts.oauth2.initTokenClient({
+        client_id: googleClientId,
+        scope: 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile',
+        callback: async (tokenResponse: any) => {
+          if (tokenResponse?.error) {
+            setAuthError(`Google 登入失敗：${tokenResponse.error}`);
+            return;
+          }
+
+          try {
+            await fetchUserProfile(tokenResponse.access_token);
+          } catch (error) {
+            console.error('Google profile error:', error);
+            setAuthError('Google 登入成功，但取得個人資料失敗');
+          }
+        }
+      });
+
+      setAuthError(null);
+      return true;
+    };
+
+    if (initGoogleTokenClient()) return;
+
+    const timer = window.setInterval(() => {
+      if (initGoogleTokenClient()) {
+        window.clearInterval(timer);
+      }
+    }, 200);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [googleClientId]);
+
+  const handleLogin = () => {
+    if (!googleClientId) {
+      setAuthError('尚未設定 Google Client ID（VITE_GOOGLE_CLIENT_ID）');
+      return;
+    }
+
+    if (!tokenClientRef.current) {
+      setAuthError('Google 登入服務尚未載入完成，請稍後再試');
+      return;
+    }
+
+    tokenClientRef.current.requestAccessToken({ prompt: 'consent' });
+  };
+
+  const handleLogout = () => {
+    if (user?.accessToken && window.google?.accounts?.oauth2?.revoke) {
+      window.google.accounts.oauth2.revoke(user.accessToken, () => setUser(null));
+      return;
+    }
+    setUser(null);
+  };
 
   const saveSettings = (newId: string) => {
     const newSettings = { ...settings, googleSheetId: newId };
@@ -259,6 +348,7 @@ const App: React.FC = () => {
           <button onClick={handleLogin} className="w-full flex items-center justify-center gap-3 bg-gray-900 text-white py-4 rounded-2xl hover:bg-black transition-all shadow-xl font-bold text-lg">
             使用 Google 登入
           </button>
+          {authError && <p className="mt-4 text-sm text-rose-600 font-bold">{authError}</p>}
         </div>
       </div>
     );
