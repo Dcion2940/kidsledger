@@ -2,9 +2,14 @@
 import { GoogleGenAI } from "@google/genai";
 import { Transaction, TransactionType } from "../types";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
+const apiKey = process.env.API_KEY || '';
+const ai = apiKey ? new GoogleGenAI({ apiKey }) : null;
 
 export const getFinancialAdvice = async (childName: string, transactions: Transaction[]) => {
+  if (!ai) {
+    return "目前未設定 AI 金鑰，先專注記帳和儲蓄目標也很棒！";
+  }
+
   const summary = transactions.reduce((acc, t) => {
     if (t.type === TransactionType.INCOME) acc.income += t.amount;
     else if (t.type === TransactionType.EXPENSE) acc.expense += t.amount;
