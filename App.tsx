@@ -327,22 +327,35 @@ const App: React.FC = () => {
     setChildToDelete(null);
   };
 
-  const exportToExcel = () => {
-    let csvContent = "\uFEFF"; 
-    csvContent += "類別,姓名,日期,類型/標的,項目/動作,金額/數量,單價,總額\n";
-    transactions.forEach(t => {
-      const child = children.find(c => c.id === t.childId)?.name || '未知';
-      csvContent += `一般帳目,${child},${t.date},${t.type},${t.description},${t.amount},-,${t.amount}\n`;
-    });
-    investments.forEach(i => {
-      const child = children.find(c => c.id === i.childId)?.name || '未知';
-      csvContent += `股票投資,${child},${i.date},${i.symbol},${i.action},${i.quantity},${i.price},${i.totalAmount}\n`;
-    });
+  const escapeCsvCell = (value: string | number) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+
+  const downloadCsv = (filename: string, rows: Array<Array<string | number>>) => {
+    const csvContent = "\uFEFF" + rows.map((row) => row.map(escapeCsvCell).join(',')).join('\n');
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement("a");
+    const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.download = `KidsLedger_Report_${new Date().toISOString().split('T')[0]}.csv`;
+    link.download = filename;
     link.click();
+    URL.revokeObjectURL(link.href);
+  };
+
+  const exportToExcel = () => {
+    const dateTag = new Date().toISOString().split('T')[0];
+
+    downloadCsv(`KidsLedger_Children_${dateTag}.csv`, [
+      ['ID', 'Name', 'Avatar'],
+      ...children.map((c) => [c.id, c.name, c.avatar])
+    ]);
+
+    downloadCsv(`KidsLedger_Transactions_${dateTag}.csv`, [
+      ['ID', 'ChildId', 'Date', 'Type', 'Category', 'Amount', 'Description'],
+      ...transactions.map((t) => [t.id, t.childId, t.date, t.type, t.category, t.amount, t.description])
+    ]);
+
+    downloadCsv(`KidsLedger_Investments_${dateTag}.csv`, [
+      ['ID', 'ChildId', 'Date', 'Symbol', 'CompanyName', 'Quantity', 'Price', 'TotalAmount', 'Action'],
+      ...investments.map((i) => [i.id, i.childId, i.date, i.symbol, i.companyName, i.quantity, i.price, i.totalAmount, i.action])
+    ]);
   };
 
   const handleAddTransaction = async (t: Transaction) => {
@@ -438,7 +451,7 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen flex bg-[#f8fafc]">
-      <aside className="w-72 bg-white border-r border-slate-200 flex-col hidden lg:flex shadow-sm">
+      <aside className="w-64 bg-white border-r border-slate-200 flex-col hidden lg:flex shadow-sm">
         <div className="p-8 flex items-center gap-4">
           <div className="bg-blue-600 p-2.5 rounded-2xl shadow-lg shadow-blue-200">
             <Wallet className="w-6 h-6 text-white" />
@@ -455,9 +468,9 @@ const App: React.FC = () => {
           </button>
         </nav>
 
-        <div className="p-6 mt-auto space-y-4">
+        <div className="p-6 mt-4 space-y-4">
           <button onClick={exportToExcel} className="flex items-center gap-3 px-5 py-3 text-sm font-bold text-emerald-600 bg-emerald-50 rounded-xl hover:bg-emerald-100 transition w-full">
-            <Download className="w-4 h-4" /> 導出報表 (Excel)
+            <Download className="w-4 h-4" /> 匯出 Google Sheet 檔
           </button>
           <button onClick={() => setShowSettings(true)} className="flex items-center gap-3 px-5 py-3 text-sm font-bold text-slate-600 bg-slate-100 rounded-xl hover:bg-slate-200 transition w-full">
             <Settings className="w-4 h-4" /> 系統與小朋友設定

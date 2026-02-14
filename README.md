@@ -38,3 +38,4 @@ View your app in AI Studio: https://ai.studio/apps/drive/169EmU0wIsNvelWvWcVyVvL
 - The target spreadsheet must contain these sheet tabs: `Children`, `Transactions`, `Investments`.
 - The signed-in Google account must have edit permission on that spreadsheet.
 - To share one family ledger, share the same spreadsheet with both accounts as editors, then both devices use the same Sheet ID.
+- In the app, click `匯出 Google Sheet 檔` to download 3 CSV files. Import each file into the matching tab (`Children`, `Transactions`, `Investments`) for quick first-time setup.

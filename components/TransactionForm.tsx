@@ -38,8 +38,8 @@ const TransactionForm: React.FC<Props> = ({ onAdd, childId }) => {
         <PlusCircle className="text-blue-500 w-6 h-6" />
         記一筆新帳目
       </h3>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:flex lg:flex-row lg:items-end gap-5">
-        <div className="flex flex-col gap-2 min-w-[170px]">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-5">
+        <div className="flex flex-col gap-2 lg:col-span-2">
           <label className="text-xs font-black text-slate-400 uppercase ml-1">收支日期</label>
           <input 
             type="date" 
@@ -48,7 +48,7 @@ const TransactionForm: React.FC<Props> = ({ onAdd, childId }) => {
             className="w-full border-2 border-slate-100 rounded-2xl p-3 bg-slate-50 focus:border-blue-500 focus:outline-none font-bold text-slate-700"
           />
         </div>
-        <div className="flex flex-col gap-2 min-w-[140px]">
+        <div className="flex flex-col gap-2 lg:col-span-2">
           <label className="text-xs font-black text-slate-400 uppercase ml-1">交易類型</label>
           <select 
             value={type} 
@@ -59,7 +59,7 @@ const TransactionForm: React.FC<Props> = ({ onAdd, childId }) => {
             <option value={TransactionType.EXPENSE}>💸 支出</option>
           </select>
         </div>
-        <div className="flex flex-col gap-2 min-w-[140px]">
+        <div className="flex flex-col gap-2 lg:col-span-2">
           <label className="text-xs font-black text-slate-400 uppercase ml-1">金額</label>
           <input 
             type="number" 
@@ -72,7 +72,7 @@ const TransactionForm: React.FC<Props> = ({ onAdd, childId }) => {
             className="w-full border-2 border-slate-100 rounded-2xl p-3 bg-slate-50 focus:border-blue-500 focus:outline-none font-bold text-slate-700"
           />
         </div>
-        <div className="flex flex-col gap-2 flex-grow min-w-0">
+        <div className="flex flex-col gap-2 lg:col-span-4">
           <label className="text-xs font-black text-slate-400 uppercase ml-1">項目說明</label>
           <input 
             type="text" 
@@ -82,7 +82,7 @@ const TransactionForm: React.FC<Props> = ({ onAdd, childId }) => {
             className="w-full border-2 border-slate-100 rounded-2xl p-3 bg-slate-50 focus:border-blue-500 focus:outline-none font-bold text-slate-700"
           />
         </div>
-        <div className="min-w-[120px]">
+        <div className="lg:col-span-2">
           <button 
             type="submit"
             className="w-full bg-blue-600 text-white font-black py-4 rounded-2xl hover:bg-blue-700 transition shadow-lg shadow-blue-100 active:scale-95"
