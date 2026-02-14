@@ -36,6 +36,20 @@ const DEFAULT_CHILDREN: Child[] = [
   { id: '1', name: '小明', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Ming' }
 ];
 
+const USER_STORAGE_KEY = 'kidsledger_user';
+
+const getSavedUser = (): UserProfile | null => {
+  const raw = localStorage.getItem(USER_STORAGE_KEY);
+  if (!raw) return null;
+
+  try {
+    return JSON.parse(raw) as UserProfile;
+  } catch {
+    localStorage.removeItem(USER_STORAGE_KEY);
+    return null;
+  }
+};
+
 declare global {
   interface Window {
     google?: any;
@@ -47,7 +61,7 @@ const App: React.FC = () => {
   const [localGoogleClientId, setLocalGoogleClientId] = useState<string>(() => localStorage.getItem('google_client_id') || '');
   const [clientIdInput, setClientIdInput] = useState<string>(() => localStorage.getItem('google_client_id') || '');
   const googleClientId = envGoogleClientId || localGoogleClientId;
-  const [user, setUser] = useState<UserProfile | null>(null);
+  const [user, setUser] = useState<UserProfile | null>(() => getSavedUser());
   const [authError, setAuthError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState('DASHBOARD');
   const [children, setChildren] = useState<Child[]>([]);
@@ -59,6 +73,7 @@ const App: React.FC = () => {
   const [settings, setSettings] = useState<AppSettings>(storageManager.getSettings());
   const [showSettings, setShowSettings] = useState(false);
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'success' | 'error'>('idle');
+  const [syncError, setSyncError] = useState<string | null>(null);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [editingInvestment, setEditingInvestment] = useState<Investment | null>(null);
   const [childToDelete, setChildToDelete] = useState<Child | null>(null);
@@ -66,6 +81,7 @@ const App: React.FC = () => {
   const [newChildName, setNewChildName] = useState('');
   const [isAddingChild, setIsAddingChild] = useState(false);
   const tokenClientRef = useRef<any>(null);
+  const isSilentAuthRef = useRef(false);
 
   const sheetsService = useMemo(() => {
     if (user && settings.googleSheetId) {
@@ -73,6 +89,29 @@ const App: React.FC = () => {
     }
     return null;
   }, [user, settings.googleSheetId]);
+
+  useEffect(() => {
+    if (user) {
+      localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(user));
+    } else {
+      localStorage.removeItem(USER_STORAGE_KEY);
+    }
+  }, [user]);
+
+  const runSheetSync = async (operation: () => Promise<void>) => {
+    if (!sheetsService) return;
+
+    setSyncStatus('syncing');
+    try {
+      await operation();
+      setSyncStatus('success');
+      setSyncError(null);
+    } catch (error) {
+      console.error('Google Sheets sync error:', error);
+      setSyncStatus('error');
+      setSyncError(error instanceof Error ? error.message : 'Google Sheets 同步失敗');
+    }
+  };
 
   useEffect(() => {
     const fetchData = async () => {
@@ -94,13 +133,17 @@ const App: React.FC = () => {
           setTransactions(ts.filter(t => t.id)); 
           setInvestments(invs.filter(i => i.id));
           setSyncStatus('success');
+          setSyncError(null);
         } catch (e) {
           console.error("Fetch Error:", e);
           setSyncStatus('error');
+          setSyncError(e instanceof Error ? e.message : '無法讀取 Google Sheet');
           const localChildren = JSON.parse(localStorage.getItem('children_list') || '[]');
           const final = localChildren.length > 0 ? localChildren : DEFAULT_CHILDREN;
           setChildren(final);
           setSelectedChildId(final[0]?.id || '');
+          setTransactions(JSON.parse(localStorage.getItem('transactions') || '[]'));
+          setInvestments(JSON.parse(localStorage.getItem('investments') || '[]'));
         }
       } else {
         const localChildren = JSON.parse(localStorage.getItem('children_list') || '[]');
@@ -109,12 +152,14 @@ const App: React.FC = () => {
         setSelectedChildId(finalChildren[0]?.id || '');
         setTransactions(JSON.parse(localStorage.getItem('transactions') || '[]'));
         setInvestments(JSON.parse(localStorage.getItem('investments') || '[]'));
+        setSyncStatus('idle');
+        setSyncError(null);
       }
     };
     fetchData();
   }, [sheetsService]);
 
-  const fetchUserProfile = async (accessToken: string) => {
+  const fetchUserProfile = async (accessToken: string, expiresInSeconds?: number) => {
     const response = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
       headers: {
         Authorization: `Bearer ${accessToken}`
@@ -130,7 +175,8 @@ const App: React.FC = () => {
       name: profile.name || profile.email || 'Google User',
       email: profile.email || '',
       picture: profile.picture || 'https://api.dicebear.com/7.x/avataaars/svg?seed=Parent',
-      accessToken
+      accessToken,
+      expiresAt: expiresInSeconds ? Date.now() + (expiresInSeconds * 1000) : undefined
     });
     setAuthError(null);
   };
@@ -151,19 +197,31 @@ const App: React.FC = () => {
         client_id: googleClientId,
         scope: 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile',
         callback: async (tokenResponse: any) => {
+          const isSilentAuth = isSilentAuthRef.current;
+          isSilentAuthRef.current = false;
+
           if (tokenResponse?.error) {
+            if (isSilentAuth) return;
             setAuthError(`Google 登入失敗：${tokenResponse.error}`);
             return;
           }
 
           try {
-            await fetchUserProfile(tokenResponse.access_token);
+            await fetchUserProfile(tokenResponse.access_token, tokenResponse.expires_in);
           } catch (error) {
             console.error('Google profile error:', error);
-            setAuthError('Google 登入成功，但取得個人資料失敗');
+            if (!isSilentAuth) {
+              setAuthError('Google 登入成功，但取得個人資料失敗');
+            }
           }
         }
       });
+
+      const isExpired = !user?.expiresAt || user.expiresAt < Date.now() + 60_000;
+      if (isExpired) {
+        isSilentAuthRef.current = true;
+        tokenClientRef.current.requestAccessToken({ prompt: '' });
+      }
 
       setAuthError(null);
       return true;
@@ -181,7 +239,7 @@ const App: React.FC = () => {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [googleClientId]);
+  }, [googleClientId, user?.expiresAt]);
 
   const handleLogin = () => {
     if (!googleClientId) {
@@ -194,6 +252,7 @@ const App: React.FC = () => {
       return;
     }
 
+    isSilentAuthRef.current = false;
     tokenClientRef.current.requestAccessToken({ prompt: 'consent' });
   };
 
@@ -218,7 +277,7 @@ const App: React.FC = () => {
   };
 
   const saveSettings = (newId: string) => {
-    const newSettings = { ...settings, googleSheetId: newId };
+    const newSettings = { ...settings, googleSheetId: newId.trim() };
     setSettings(newSettings);
     storageManager.saveSettings(newSettings);
     setShowSettings(false);
@@ -239,11 +298,7 @@ const App: React.FC = () => {
     setIsAddingChild(false);
     localStorage.setItem('children_list', JSON.stringify(updated));
     
-    if (sheetsService) {
-      setSyncStatus('syncing');
-      await sheetsService.syncChildren(updated);
-      setSyncStatus('success');
-    }
+    await runSheetSync(() => sheetsService!.syncChildren(updated));
     
     if (!selectedChildId) setSelectedChildId(newChild.id);
   };
@@ -267,14 +322,7 @@ const App: React.FC = () => {
     }
     
     if (sheetsService) {
-      setSyncStatus('syncing');
-      try {
-        await sheetsService.syncChildren(updated);
-        setSyncStatus('success');
-      } catch (err) {
-        setSyncStatus('error');
-        console.error("Remove Child Error:", err);
-      }
+      await runSheetSync(() => sheetsService.syncChildren(updated));
     }
     setChildToDelete(null);
   };
@@ -301,14 +349,14 @@ const App: React.FC = () => {
     const newList = [t, ...transactions];
     setTransactions(newList);
     localStorage.setItem('transactions', JSON.stringify(newList));
-    if (sheetsService) await sheetsService.addTransaction(t);
+    if (sheetsService) await runSheetSync(() => sheetsService.addTransaction(t));
   };
 
   const handleDeleteTransaction = async (id: string) => {
     const updated = transactions.filter(t => t.id !== id);
     setTransactions(updated);
     localStorage.setItem('transactions', JSON.stringify(updated));
-    if (sheetsService) await sheetsService.deleteTransaction(id);
+    if (sheetsService) await runSheetSync(() => sheetsService.deleteTransaction(id));
   };
 
   const handleUpdateTransaction = async (e: React.FormEvent) => {
@@ -317,7 +365,7 @@ const App: React.FC = () => {
     const updated = transactions.map(t => t.id === editingTransaction.id ? editingTransaction : t);
     setTransactions(updated);
     localStorage.setItem('transactions', JSON.stringify(updated));
-    if (sheetsService) await sheetsService.updateTransaction(editingTransaction);
+    if (sheetsService) await runSheetSync(() => sheetsService.updateTransaction(editingTransaction));
     setEditingTransaction(null);
   };
 
@@ -327,7 +375,7 @@ const App: React.FC = () => {
     const updated = investments.map(i => i.id === editingInvestment.id ? editingInvestment : i);
     setInvestments(updated);
     localStorage.setItem('investments', JSON.stringify(updated));
-    if (sheetsService) await sheetsService.updateInvestment(editingInvestment);
+    if (sheetsService) await runSheetSync(() => sheetsService.updateInvestment(editingInvestment));
     setEditingInvestment(null);
   };
 
@@ -335,7 +383,7 @@ const App: React.FC = () => {
     const updated = investments.filter(i => i.id !== id);
     setInvestments(updated);
     localStorage.setItem('investments', JSON.stringify(updated));
-    if (sheetsService) await sheetsService.deleteInvestment(id);
+    if (sheetsService) await runSheetSync(() => sheetsService.deleteInvestment(id));
   };
 
   const activeChild = children.find(c => c.id === selectedChildId) || children[0] || DEFAULT_CHILDREN[0];
@@ -445,12 +493,21 @@ const App: React.FC = () => {
                 </button>
               ))}
             </div>
-            <div className={`flex items-center gap-2 px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border ${syncStatus === 'success' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : syncStatus === 'error' ? 'bg-rose-50 text-rose-600 border-rose-100' : 'bg-amber-50 text-amber-600 border-amber-100'}`}>
+            <div
+              className={`flex items-center gap-2 px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border ${syncStatus === 'success' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : syncStatus === 'error' ? 'bg-rose-50 text-rose-600 border-rose-100' : 'bg-amber-50 text-amber-600 border-amber-100'}`}
+              title={syncError || ''}
+            >
               <Database className={`w-3 h-3 ${syncStatus === 'syncing' ? 'animate-pulse' : ''}`} />
-              {syncStatus === 'success' ? '雲端連線中' : syncStatus === 'error' ? '連線錯誤' : '同步中...'}
+              {syncStatus === 'success' ? '雲端同步正常' : syncStatus === 'error' ? '同步失敗' : syncStatus === 'syncing' ? '同步中...' : '未連線'}
             </div>
           </div>
         </header>
+
+        {syncError && (
+          <div className="mx-6 md:mx-10 mt-4 bg-rose-50 border border-rose-200 rounded-2xl px-4 py-3 text-rose-700 text-sm font-bold">
+            Google Sheet 同步失敗：{syncError}
+          </div>
+        )}
 
         <div className="w-full px-6 md:px-10 py-10 pb-32">
           {activeTab === 'DASHBOARD' ? (
@@ -559,11 +616,11 @@ const App: React.FC = () => {
               childId={selectedChildId} 
               childName={activeChild.name} 
               availableBalance={balance} 
-              onAdd={(inv) => {
+              onAdd={async (inv) => {
                 const newList = [inv, ...investments];
                 setInvestments(newList);
                 localStorage.setItem('investments', JSON.stringify(newList));
-                if (sheetsService) sheetsService.addInvestment(inv);
+                if (sheetsService) await runSheetSync(() => sheetsService.addInvestment(inv));
               }}
               onEdit={(inv) => setEditingInvestment(inv)}
               onDelete={handleDeleteInvestment}

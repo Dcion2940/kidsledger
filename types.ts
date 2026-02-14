@@ -38,6 +38,7 @@ export interface UserProfile {
   email: string;
   picture: string;
   accessToken: string;
+  expiresAt?: number;
 }
 
 export interface AppSettings {

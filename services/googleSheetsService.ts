@@ -48,18 +48,14 @@ export class GoogleSheetsService {
   }
 
   async getChildren(): Promise<Child[]> {
-    try {
-      const data = await this.request('Children!A2:C');
-      return (data.values || [])
-        .filter((row: any[]) => row[0] && row[1])
-        .map((row: any[]) => ({
-          id: row[0],
-          name: row[1],
-          avatar: row[2]
-        }));
-    } catch (e) {
-      return JSON.parse(localStorage.getItem('children_list') || '[]');
-    }
+    const data = await this.request('Children!A2:C');
+    return (data.values || [])
+      .filter((row: any[]) => row[0] && row[1])
+      .map((row: any[]) => ({
+        id: row[0],
+        name: row[1],
+        avatar: row[2]
+      }));
   }
 
   async syncChildren(children: Child[]) {
@@ -69,31 +65,23 @@ export class GoogleSheetsService {
     const emptyRows = Array(Math.max(0, 50 - rows.length)).fill(['', '', '']);
     const values = [header, ...rows, ...emptyRows];
     
-    try {
-      await this.request('Children!A1:C51', 'UPDATE', { values });
-      localStorage.setItem('children_list', JSON.stringify(children));
-    } catch (e) {
-      console.error("同步小朋友失敗", e);
-    }
+    await this.request('Children!A1:C51', 'UPDATE', { values });
+    localStorage.setItem('children_list', JSON.stringify(children));
   }
 
   async getTransactions(): Promise<Transaction[]> {
-    try {
-      const data = await this.request('Transactions!A2:G');
-      return (data.values || [])
-        .filter((row: any[]) => row[0])
-        .map((row: any[]) => ({
-          id: row[0],
-          childId: row[1],
-          date: row[2],
-          type: row[3],
-          category: row[4],
-          amount: Number(row[5]),
-          description: row[6]
-        }));
-    } catch (e) {
-      return JSON.parse(localStorage.getItem('transactions') || '[]');
-    }
+    const data = await this.request('Transactions!A2:G');
+    return (data.values || [])
+      .filter((row: any[]) => row[0])
+      .map((row: any[]) => ({
+        id: row[0],
+        childId: row[1],
+        date: row[2],
+        type: row[3],
+        category: row[4],
+        amount: Number(row[5]),
+        description: row[6]
+      }));
   }
 
   async addTransaction(t: Transaction) {
@@ -118,24 +106,20 @@ export class GoogleSheetsService {
   }
 
   async getInvestments(): Promise<Investment[]> {
-    try {
-      const data = await this.request('Investments!A2:I');
-      return (data.values || [])
-        .filter((row: any[]) => row[0])
-        .map((row: any[]) => ({
-          id: row[0],
-          childId: row[1],
-          date: row[2],
-          symbol: row[3],
-          companyName: row[4],
-          quantity: Number(row[5]),
-          price: Number(row[6]),
-          totalAmount: Number(row[7]),
-          action: row[8] as 'BUY' | 'SELL'
-        }));
-    } catch (e) {
-      return JSON.parse(localStorage.getItem('investments') || '[]');
-    }
+    const data = await this.request('Investments!A2:I');
+    return (data.values || [])
+      .filter((row: any[]) => row[0])
+      .map((row: any[]) => ({
+        id: row[0],
+        childId: row[1],
+        date: row[2],
+        symbol: row[3],
+        companyName: row[4],
+        quantity: Number(row[5]),
+        price: Number(row[6]),
+        totalAmount: Number(row[7]),
+        action: row[8] as 'BUY' | 'SELL'
+      }));
   }
 
   async addInvestment(inv: Investment) {

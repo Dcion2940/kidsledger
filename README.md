@@ -32,3 +32,9 @@ View your app in AI Studio: https://ai.studio/apps/drive/169EmU0wIsNvelWvWcVyVvL
 3. Push to `main`. GitHub Actions will build and deploy automatically.
 4. In GitHub repo settings, open **Pages** and set **Build and deployment**:
    - Source: `GitHub Actions`
+
+## Google Sheet Sync Notes
+
+- The target spreadsheet must contain these sheet tabs: `Children`, `Transactions`, `Investments`.
+- The signed-in Google account must have edit permission on that spreadsheet.
+- To share one family ledger, share the same spreadsheet with both accounts as editors, then both devices use the same Sheet ID.
