@@ -603,7 +603,7 @@ const App: React.FC = () => {
                         childTransactions.map((t) => (
                           <div key={t.id} className="flex items-start justify-between gap-3 p-4 sm:p-6 hover:bg-slate-50 rounded-3xl transition group">
                             <div className="flex items-start gap-3 sm:gap-5 min-w-0 flex-1">
-                              <div className={`p-3 sm:p-4 rounded-2xl -ml-1 sm:ml-0 shrink-0 ${t.type === TransactionType.INCOME ? 'bg-emerald-100 text-emerald-600' : 'bg-rose-100 text-rose-600'}`}>
+                              <div className={`p-3 sm:p-4 rounded-2xl -ml-3 sm:ml-0 shrink-0 ${t.type === TransactionType.INCOME ? 'bg-emerald-100 text-emerald-600' : 'bg-rose-100 text-rose-600'}`}>
                                 {t.type === TransactionType.INCOME ? <ArrowUpCircle /> : <ArrowDownCircle />}
                               </div>
                               <div className="min-w-0">
