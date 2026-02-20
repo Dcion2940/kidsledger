@@ -590,8 +590,8 @@ const App: React.FC = () => {
                 </button>
               </div>
 
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
-                <div className="lg:col-span-2 space-y-10">
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
+                <div className="lg:col-span-9 space-y-10">
                   <TransactionForm childId={selectedChildId} onAdd={handleAddTransaction} />
                   
                   <div className="bg-white p-10 rounded-[3rem] shadow-sm border border-slate-100">
@@ -631,7 +631,7 @@ const App: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="bg-white p-10 rounded-[3rem] shadow-sm border border-slate-100 h-fit">
+                <div className="lg:col-span-3 bg-white p-10 rounded-[3rem] shadow-sm border border-slate-100 h-fit">
                   <h3 className="text-xl font-black text-slate-800 mb-8 uppercase tracking-widest text-center">資產分佈</h3>
                   <div className="h-64">
                     <ResponsiveContainer width="100%" height="100%">

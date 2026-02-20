@@ -45,7 +45,7 @@ const TransactionForm: React.FC<Props> = ({ onAdd, childId }) => {
             type="date" 
             value={date}
             onChange={(e) => setDate(e.target.value)}
-            className="w-full border-2 border-slate-100 rounded-2xl p-3 bg-slate-50 focus:border-blue-500 focus:outline-none font-bold text-slate-700"
+            className="w-full lg:min-w-[190px] border-2 border-slate-100 rounded-2xl p-3 bg-slate-50 focus:border-blue-500 focus:outline-none font-bold text-slate-700"
           />
         </div>
         <div className="flex flex-col gap-2 lg:col-span-2">
