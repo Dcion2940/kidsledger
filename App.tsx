@@ -408,6 +408,12 @@ const App: React.FC = () => {
       childInvestments.reduce((s, i) => i.action === 'BUY' ? s + i.totalAmount : s - i.totalAmount, 0),
   };
   const balance = stats.income - stats.expense - stats.investment;
+  const assetDistributionData = [
+    { name: '收入', value: stats.income, color: '#10b981' },
+    { name: '支出', value: stats.expense, color: '#f43f5e' },
+    { name: '投資', value: stats.investment, color: '#f59e0b' }
+  ];
+  const assetDistributionTotal = assetDistributionData.reduce((sum, item) => sum + item.value, 0);
 
   if (!user) {
     return (
@@ -447,7 +453,7 @@ const App: React.FC = () => {
   }
 
   return (
-    <div className="h-screen flex bg-[#f8fafc]">
+    <div className="h-screen flex bg-[#f8fafc] overflow-x-hidden">
       <aside className="w-64 h-screen sticky top-0 bg-white border-r border-slate-200 flex-col hidden lg:flex shadow-sm">
         <div className="p-8 flex items-center gap-4">
           <div className="bg-blue-600 p-2.5 rounded-2xl shadow-lg shadow-blue-200">
@@ -488,7 +494,7 @@ const App: React.FC = () => {
         </div>
       </aside>
 
-      <main className="flex-1 h-screen overflow-y-auto">
+      <main className="flex-1 h-screen overflow-y-auto overflow-x-hidden">
         <header className="sticky top-0 bg-white/70 backdrop-blur-xl border-b border-slate-200/50 p-4 z-20">
           <div className="w-full px-4 md:px-6">
             <div className="flex items-center justify-between gap-3">
@@ -523,7 +529,7 @@ const App: React.FC = () => {
               </div>
             </div>
 
-            <div className="flex justify-end mt-3 lg:hidden">
+            <div className="flex justify-end mt-4 lg:hidden">
               <div
                 className={`flex items-center gap-2 px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border ${syncStatus === 'success' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : syncStatus === 'error' ? 'bg-rose-50 text-rose-600 border-rose-100' : 'bg-amber-50 text-amber-600 border-amber-100'}`}
                 title={syncError || ''}
@@ -541,7 +547,7 @@ const App: React.FC = () => {
           </div>
         )}
 
-        <div className="w-full px-6 md:px-10 py-10 pb-32">
+        <div className="w-full px-6 md:px-10 py-10 pb-32 overflow-x-hidden">
           {activeTab === 'DASHBOARD' ? (
             <div className="space-y-10">
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -595,21 +601,21 @@ const App: React.FC = () => {
                         <div className="py-20 text-center text-slate-300 font-bold italic">尚無記帳紀錄</div>
                       ) : (
                         childTransactions.map((t) => (
-                          <div key={t.id} className="flex items-center justify-between p-6 hover:bg-slate-50 rounded-3xl transition group">
-                            <div className="flex items-center gap-5">
-                              <div className={`p-4 rounded-2xl ${t.type === TransactionType.INCOME ? 'bg-emerald-100 text-emerald-600' : 'bg-rose-100 text-rose-600'}`}>
+                          <div key={t.id} className="flex items-start justify-between gap-3 p-4 sm:p-6 hover:bg-slate-50 rounded-3xl transition group">
+                            <div className="flex items-start gap-3 sm:gap-5 min-w-0 flex-1">
+                              <div className={`p-3 sm:p-4 rounded-2xl -ml-1 sm:ml-0 shrink-0 ${t.type === TransactionType.INCOME ? 'bg-emerald-100 text-emerald-600' : 'bg-rose-100 text-rose-600'}`}>
                                 {t.type === TransactionType.INCOME ? <ArrowUpCircle /> : <ArrowDownCircle />}
                               </div>
-                              <div>
-                                <p className="font-black text-slate-800 text-lg">{t.description}</p>
-                                <p className="text-xs text-slate-400 font-bold uppercase">{t.date} • {t.category}</p>
+                              <div className="min-w-0">
+                                <p className="font-black text-slate-800 text-lg leading-tight break-words">{t.description}</p>
+                                <p className="text-xs text-slate-400 font-bold uppercase break-words">{t.date} • {t.category}</p>
                               </div>
                             </div>
-                            <div className="flex items-center gap-6">
-                              <span className={`font-mono font-black text-2xl ${t.type === TransactionType.INCOME ? 'text-emerald-600' : 'text-rose-600'}`}>
+                            <div className="flex flex-col items-end gap-2 shrink-0 ml-2">
+                              <span className={`font-mono font-black text-xl sm:text-2xl whitespace-nowrap ${t.type === TransactionType.INCOME ? 'text-emerald-600' : 'text-rose-600'}`}>
                                 {t.type === TransactionType.EXPENSE ? '-' : '+'}${t.amount.toLocaleString()}
                               </span>
-                              <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition">
+                              <div className="flex gap-2 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition">
                                 <button onClick={() => setEditingTransaction(t)} className="p-2 text-slate-400 hover:text-blue-600 bg-white rounded-xl shadow-sm border border-slate-100">
                                   <Pencil className="w-4 h-4" />
                                 </button>
@@ -630,14 +636,28 @@ const App: React.FC = () => {
                   <div className="h-64">
                     <ResponsiveContainer width="100%" height="100%">
                       <PieChart>
-                        <Pie data={[{ name: '收入', value: stats.income }, { name: '支出', value: stats.expense }, { name: '投資', value: stats.investment }]} innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">
-                          <Cell fill="#10b981" />
-                          <Cell fill="#f43f5e" />
-                          <Cell fill="#f59e0b" />
+                        <Pie data={assetDistributionData} innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">
+                          {assetDistributionData.map((item) => (
+                            <Cell key={item.name} fill={item.color} />
+                          ))}
                         </Pie>
                         <Tooltip />
                       </PieChart>
                     </ResponsiveContainer>
+                  </div>
+                  <div className="mt-6 space-y-3">
+                    {assetDistributionData.map((item) => {
+                      const percent = assetDistributionTotal > 0 ? ((item.value / assetDistributionTotal) * 100).toFixed(1) : '0.0';
+                      return (
+                        <div key={item.name} className="flex items-center justify-between text-sm font-bold text-slate-600 gap-3">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
+                            <span className="truncate">{item.name}</span>
+                          </div>
+                          <span className="whitespace-nowrap">{percent}%</span>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               </div>
