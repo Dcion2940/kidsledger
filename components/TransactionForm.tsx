@@ -82,7 +82,7 @@ const TransactionForm: React.FC<Props> = ({ onAdd, childId }) => {
             className="w-full h-14 border-2 border-slate-100 rounded-2xl px-4 bg-slate-50 focus:border-blue-500 focus:outline-none font-bold text-slate-700"
           />
         </div>
-        <div className="lg:col-span-1">
+        <div className="lg:col-span-1 flex items-end">
           <button 
             type="submit"
             className="w-full h-14 bg-blue-600 text-white font-black rounded-2xl hover:bg-blue-700 transition shadow-lg shadow-blue-100 active:scale-95"

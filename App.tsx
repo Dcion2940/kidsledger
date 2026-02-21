@@ -278,8 +278,12 @@ const App: React.FC = () => {
     setUser(null);
   };
 
-  const saveSettings = (newId: string) => {
-    const newSettings = { ...settings, googleSheetId: newId.trim() };
+  const saveSettings = () => {
+    const newSettings = {
+      ...settings,
+      googleSheetId: settings.googleSheetId.trim(),
+      aiApiLink: settings.aiApiLink.trim()
+    };
     setSettings(newSettings);
     storageManager.saveSettings(newSettings);
     setShowSettings(false);
@@ -569,26 +573,28 @@ const App: React.FC = () => {
                 </div>
               </div>
 
-              <div className="bg-white rounded-[3rem] p-10 shadow-sm border border-slate-100 flex items-center gap-8 flex-wrap lg:flex-nowrap">
-                <div className="bg-blue-50 p-4 rounded-3xl">
-                  <Sparkles className="w-8 h-8 text-blue-600" />
+              {settings.aiMentorEnabled && (
+                <div className="bg-white rounded-[3rem] p-10 shadow-sm border border-slate-100 flex items-center gap-8 flex-wrap lg:flex-nowrap">
+                  <div className="bg-blue-50 p-4 rounded-3xl">
+                    <Sparkles className="w-8 h-8 text-blue-600" />
+                  </div>
+                  <div className="flex-1 min-w-[300px]">
+                    <h3 className="text-xl font-black text-slate-800 mb-1">AI 導師建議</h3>
+                    <p className="text-slate-500 font-medium leading-relaxed">{aiAdvice || "讓 AI 幫你看看這個月的表現！點擊右側按鈕開始分析。"}</p>
+                  </div>
+                  <button 
+                    onClick={async () => {
+                      setLoadingAdvice(true);
+                      setAiAdvice(await getFinancialAdvice(activeChild.name, childTransactions));
+                      setLoadingAdvice(false);
+                    }}
+                    className="bg-blue-600 text-white px-8 py-4 rounded-2xl font-black hover:bg-blue-700 transition shadow-lg shadow-blue-100 active:scale-95 disabled:opacity-50"
+                    disabled={loadingAdvice}
+                  >
+                    {loadingAdvice ? '分析中...' : '獲取建議'}
+                  </button>
                 </div>
-                <div className="flex-1 min-w-[300px]">
-                  <h3 className="text-xl font-black text-slate-800 mb-1">AI 導師建議</h3>
-                  <p className="text-slate-500 font-medium leading-relaxed">{aiAdvice || "讓 AI 幫你看看這個月的表現！點擊右側按鈕開始分析。"}</p>
-                </div>
-                <button 
-                  onClick={async () => {
-                    setLoadingAdvice(true);
-                    setAiAdvice(await getFinancialAdvice(activeChild.name, childTransactions));
-                    setLoadingAdvice(false);
-                  }}
-                  className="bg-blue-600 text-white px-8 py-4 rounded-2xl font-black hover:bg-blue-700 transition shadow-lg shadow-blue-100 active:scale-95 disabled:opacity-50"
-                  disabled={loadingAdvice}
-                >
-                  {loadingAdvice ? '分析中...' : '獲取建議'}
-                </button>
-              </div>
+              )}
 
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
                 <div className="lg:col-span-9 space-y-10">
@@ -856,10 +862,49 @@ const App: React.FC = () => {
 
               <section className="bg-slate-50 p-8 rounded-[2.5rem] border border-slate-100">
                 <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest mb-5">雲端設定</h3>
-                <input type="text" defaultValue={settings.googleSheetId} id="sheetIdInput" placeholder="貼上您的試算表 ID" className="w-full bg-white border-2 border-slate-100 rounded-2xl p-4 font-mono text-sm focus:border-blue-500 focus:outline-none transition-all" />
+                <input
+                  type="text"
+                  value={settings.googleSheetId}
+                  onChange={(e) => setSettings((prev) => ({ ...prev, googleSheetId: e.target.value }))}
+                  placeholder="貼上您的試算表 ID"
+                  className="w-full bg-white border-2 border-slate-100 rounded-2xl p-4 font-mono text-sm focus:border-blue-500 focus:outline-none transition-all"
+                />
               </section>
 
-              <button onClick={() => { const input = document.getElementById('sheetIdInput') as HTMLInputElement; saveSettings(input.value); }} className="w-full bg-gray-900 text-white py-6 rounded-[2rem] font-black text-xl shadow-2xl hover:bg-black transition-all">儲存所有設定</button>
+              <section className="bg-slate-50 p-8 rounded-[2.5rem] border border-slate-100 space-y-5">
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <h3 className="text-sm font-black text-slate-700 uppercase tracking-widest">AI導師建議</h3>
+                    <p className="text-xs text-slate-400 font-semibold mt-1">可控制首頁 AI 建議模組顯示與設定 API 連結</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setSettings((prev) => ({ ...prev, aiMentorEnabled: !prev.aiMentorEnabled }))}
+                    className={`relative inline-flex h-8 w-14 items-center rounded-full transition-colors ${settings.aiMentorEnabled ? 'bg-blue-600' : 'bg-slate-300'}`}
+                    aria-pressed={settings.aiMentorEnabled}
+                    aria-label="切換 AI導師建議"
+                  >
+                    <span
+                      className={`inline-block h-6 w-6 transform rounded-full bg-white shadow transition-transform ${settings.aiMentorEnabled ? 'translate-x-7' : 'translate-x-1'}`}
+                    />
+                  </button>
+                </div>
+
+                {settings.aiMentorEnabled && (
+                  <div>
+                    <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">AI API 連結</label>
+                    <input
+                      type="url"
+                      value={settings.aiApiLink}
+                      onChange={(e) => setSettings((prev) => ({ ...prev, aiApiLink: e.target.value }))}
+                      placeholder="https://your-llm-endpoint.example.com/v1/chat/completions"
+                      className="w-full bg-white border-2 border-slate-100 rounded-2xl p-4 text-sm focus:border-blue-500 focus:outline-none transition-all"
+                    />
+                  </div>
+                )}
+              </section>
+
+              <button onClick={saveSettings} className="w-full bg-gray-900 text-white py-6 rounded-[2rem] font-black text-xl shadow-2xl hover:bg-black transition-all">儲存所有設定</button>
             </div>
           </div>
         </div>

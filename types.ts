@@ -43,4 +43,6 @@ export interface UserProfile {
 
 export interface AppSettings {
   googleSheetId: string;
+  aiMentorEnabled: boolean;
+  aiApiLink: string;
 }
