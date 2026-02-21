@@ -38,14 +38,14 @@ const TransactionForm: React.FC<Props> = ({ onAdd, childId }) => {
         <PlusCircle className="text-blue-500 w-6 h-6" />
         記一筆新帳目
       </h3>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-5">
-        <div className="flex flex-col gap-2 lg:col-span-2">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-11 gap-5">
+        <div className="flex flex-col gap-2 lg:col-span-3">
           <label className="text-xs font-black text-slate-400 uppercase ml-1">收支日期</label>
           <input 
             type="date" 
             value={date}
             onChange={(e) => setDate(e.target.value)}
-            className="w-full lg:min-w-[190px] border-2 border-slate-100 rounded-2xl p-3 bg-slate-50 focus:border-blue-500 focus:outline-none font-bold text-slate-700"
+            className="w-full h-14 border-2 border-slate-100 rounded-2xl px-4 bg-slate-50 focus:border-blue-500 focus:outline-none font-bold text-slate-700"
           />
         </div>
         <div className="flex flex-col gap-2 lg:col-span-2">
@@ -53,7 +53,7 @@ const TransactionForm: React.FC<Props> = ({ onAdd, childId }) => {
           <select 
             value={type} 
             onChange={(e) => setType(e.target.value as TransactionType)}
-            className="w-full border-2 border-slate-100 rounded-2xl p-3 bg-slate-50 focus:border-blue-500 focus:outline-none font-bold text-slate-700"
+            className="w-full h-14 border-2 border-slate-100 rounded-2xl px-4 bg-slate-50 focus:border-blue-500 focus:outline-none font-bold text-slate-700"
           >
             <option value={TransactionType.INCOME}>💰 收入</option>
             <option value={TransactionType.EXPENSE}>💸 支出</option>
@@ -69,23 +69,23 @@ const TransactionForm: React.FC<Props> = ({ onAdd, childId }) => {
               const val = e.target.value;
               setAmount(val === '' ? '' : val);
             }}
-            className="w-full border-2 border-slate-100 rounded-2xl p-3 bg-slate-50 focus:border-blue-500 focus:outline-none font-bold text-slate-700"
+            className="w-full h-14 border-2 border-slate-100 rounded-2xl px-4 bg-slate-50 focus:border-blue-500 focus:outline-none font-bold text-slate-700"
           />
         </div>
-        <div className="flex flex-col gap-2 lg:col-span-4">
+        <div className="flex flex-col gap-2 lg:col-span-3">
           <label className="text-xs font-black text-slate-400 uppercase ml-1">項目說明</label>
           <input 
             type="text" 
             placeholder="例如：壓歲錢"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            className="w-full border-2 border-slate-100 rounded-2xl p-3 bg-slate-50 focus:border-blue-500 focus:outline-none font-bold text-slate-700"
+            className="w-full h-14 border-2 border-slate-100 rounded-2xl px-4 bg-slate-50 focus:border-blue-500 focus:outline-none font-bold text-slate-700"
           />
         </div>
-        <div className="lg:col-span-2">
+        <div className="lg:col-span-1">
           <button 
             type="submit"
-            className="w-full bg-blue-600 text-white font-black py-4 rounded-2xl hover:bg-blue-700 transition shadow-lg shadow-blue-100 active:scale-95"
+            className="w-full h-14 bg-blue-600 text-white font-black rounded-2xl hover:bg-blue-700 transition shadow-lg shadow-blue-100 active:scale-95"
           >
             記帳
           </button>
