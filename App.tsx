@@ -607,27 +607,52 @@ const App: React.FC = () => {
                         <div className="py-20 text-center text-slate-300 font-bold italic">尚無記帳紀錄</div>
                       ) : (
                         childTransactions.map((t) => (
-                          <div key={t.id} className="flex items-start justify-between gap-3 p-4 sm:p-6 hover:bg-slate-50 rounded-3xl transition group">
-                            <div className="flex items-start gap-3 sm:gap-5 min-w-0 flex-1">
-                              <div className={`p-3 sm:p-4 rounded-2xl -ml-3 sm:ml-0 shrink-0 ${t.type === TransactionType.INCOME ? 'bg-emerald-100 text-emerald-600' : 'bg-rose-100 text-rose-600'}`}>
-                                {t.type === TransactionType.INCOME ? <ArrowUpCircle /> : <ArrowDownCircle />}
-                              </div>
-                              <div className="min-w-0">
-                                <p className="font-black text-slate-800 text-lg leading-tight break-words">{t.description}</p>
-                                <p className="text-xs text-slate-400 font-bold uppercase break-words">{t.date} • {t.category}</p>
-                              </div>
+                          <div key={t.id} className="flex items-start gap-3 p-4 sm:p-6 hover:bg-slate-50 rounded-3xl transition group">
+                            <div className={`p-3 sm:p-4 rounded-2xl -ml-3 sm:ml-0 shrink-0 ${t.type === TransactionType.INCOME ? 'bg-emerald-100 text-emerald-600' : 'bg-rose-100 text-rose-600'}`}>
+                              {t.type === TransactionType.INCOME ? <ArrowUpCircle /> : <ArrowDownCircle />}
                             </div>
-                            <div className="flex flex-col items-end gap-2 shrink-0 ml-2">
-                              <span className={`font-mono font-black text-xl sm:text-2xl whitespace-nowrap ${t.type === TransactionType.INCOME ? 'text-emerald-600' : 'text-rose-600'}`}>
-                                {t.type === TransactionType.EXPENSE ? '-' : '+'}${t.amount.toLocaleString()}
-                              </span>
-                              <div className="flex gap-2 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition">
-                                <button onClick={() => setEditingTransaction(t)} className="p-2 text-slate-400 hover:text-blue-600 bg-white rounded-xl shadow-sm border border-slate-100">
-                                  <Pencil className="w-4 h-4" />
-                                </button>
-                                <button onClick={() => handleDeleteTransaction(t.id)} className="p-2 text-slate-400 hover:text-rose-600 bg-white rounded-xl shadow-sm border border-slate-100">
-                                  <Trash2 className="w-4 h-4" />
-                                </button>
+
+                            <div className="min-w-0 flex-1">
+                              <div className="sm:hidden space-y-2.5">
+                                <p className="font-black text-slate-800 text-lg leading-snug break-words">
+                                  {t.description}
+                                </p>
+                                <p className="text-xs text-slate-400 font-bold uppercase leading-relaxed break-words">
+                                  {t.date} • {t.category}
+                                </p>
+                                <div className="flex items-center justify-between gap-3 pt-1">
+                                  <span className={`font-mono font-black text-2xl whitespace-nowrap ${t.type === TransactionType.INCOME ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                    {t.type === TransactionType.EXPENSE ? '-' : '+'}${t.amount.toLocaleString()}
+                                  </span>
+                                  <div className="flex gap-2 shrink-0">
+                                    <button onClick={() => setEditingTransaction(t)} className="p-2 text-slate-400 hover:text-blue-600 bg-white rounded-xl shadow-sm border border-slate-100">
+                                      <Pencil className="w-4 h-4" />
+                                    </button>
+                                    <button onClick={() => handleDeleteTransaction(t.id)} className="p-2 text-slate-400 hover:text-rose-600 bg-white rounded-xl shadow-sm border border-slate-100">
+                                      <Trash2 className="w-4 h-4" />
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="hidden sm:flex items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                  <p className="font-black text-slate-800 text-lg leading-tight break-words">{t.description}</p>
+                                  <p className="text-xs text-slate-400 font-bold uppercase break-words">{t.date} • {t.category}</p>
+                                </div>
+                                <div className="flex flex-col items-end gap-2 shrink-0 ml-2">
+                                  <span className={`font-mono font-black text-xl sm:text-2xl whitespace-nowrap ${t.type === TransactionType.INCOME ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                    {t.type === TransactionType.EXPENSE ? '-' : '+'}${t.amount.toLocaleString()}
+                                  </span>
+                                  <div className="flex gap-2 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition">
+                                    <button onClick={() => setEditingTransaction(t)} className="p-2 text-slate-400 hover:text-blue-600 bg-white rounded-xl shadow-sm border border-slate-100">
+                                      <Pencil className="w-4 h-4" />
+                                    </button>
+                                    <button onClick={() => handleDeleteTransaction(t.id)} className="p-2 text-slate-400 hover:text-rose-600 bg-white rounded-xl shadow-sm border border-slate-100">
+                                      <Trash2 className="w-4 h-4" />
+                                    </button>
+                                  </div>
+                                </div>
                               </div>
                             </div>
                           </div>
