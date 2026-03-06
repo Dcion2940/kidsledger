@@ -32,6 +32,7 @@ const InvestmentRecord: React.FC<Props> = ({ investments, prices, childId, child
   const [formData, setFormData] = useState({
     date: new Date().toISOString().split('T')[0],
     symbol: '',
+    companyName: '',
     quantity: '',
     price: '',
     totalAmount: '',
@@ -59,6 +60,79 @@ const InvestmentRecord: React.FC<Props> = ({ investments, prices, childId, child
     });
     return map;
   }, [prices]);
+
+  const stockReference = useMemo(() => {
+    const map = new Map<string, { symbol: string; companyName: string }>();
+
+    prices.forEach((item) => {
+      const symbol = item.symbol?.trim().toUpperCase();
+      const companyName = item.companyName?.trim();
+      if (!symbol || !companyName) return;
+      map.set(`${symbol}|${companyName.toLowerCase()}`, { symbol, companyName });
+    });
+
+    investments.forEach((item) => {
+      const symbol = item.symbol?.trim().toUpperCase();
+      const companyName = item.companyName?.trim();
+      if (!symbol || !companyName) return;
+      if (companyName.toUpperCase() === symbol) return;
+      map.set(`${symbol}|${companyName.toLowerCase()}`, { symbol, companyName });
+    });
+
+    return Array.from(map.values());
+  }, [prices, investments]);
+
+  const autofillCompanyName = (symbolRaw: string) => {
+    const symbol = symbolRaw.trim().toUpperCase();
+    if (!symbol) return;
+
+    const matchedNames = Array.from(
+      new Set(
+        stockReference
+          .filter((row) => row.symbol === symbol)
+          .map((row) => row.companyName)
+      )
+    );
+
+    if (matchedNames.length !== 1) return;
+
+    setFormData((prev) => {
+      if (prev.companyName.trim()) return prev;
+      return { ...prev, symbol, companyName: matchedNames[0] };
+    });
+  };
+
+  const autofillSymbol = (nameRaw: string) => {
+    const name = nameRaw.trim().toLowerCase();
+    if (!name) return;
+
+    const matchedSymbols = Array.from(
+      new Set(
+        stockReference
+          .filter((row) => row.companyName.trim().toLowerCase() === name)
+          .map((row) => row.symbol)
+      )
+    );
+
+    if (matchedSymbols.length !== 1) return;
+
+    setFormData((prev) => {
+      if (prev.symbol.trim()) return prev;
+      return { ...prev, symbol: matchedSymbols[0] };
+    });
+  };
+
+  useEffect(() => {
+    if (!formData.symbol.trim()) return;
+    const timer = window.setTimeout(() => autofillCompanyName(formData.symbol), 500);
+    return () => window.clearTimeout(timer);
+  }, [formData.symbol, stockReference]);
+
+  useEffect(() => {
+    if (!formData.companyName.trim()) return;
+    const timer = window.setTimeout(() => autofillSymbol(formData.companyName), 500);
+    return () => window.clearTimeout(timer);
+  }, [formData.companyName, stockReference]);
 
   const holdings = useMemo(() => {
     const grouped = new Map<string, HoldingSummary>();
@@ -134,14 +208,14 @@ const InvestmentRecord: React.FC<Props> = ({ investments, prices, childId, child
         childId,
         date: formData.date,
         symbol: formData.symbol.toUpperCase(),
-        companyName: formData.symbol.toUpperCase(),
+        companyName: formData.companyName.trim() || formData.symbol.toUpperCase(),
         quantity: Number(formData.quantity),
         price: Number(formData.price),
         totalAmount: total,
         action: formData.action
       });
       setFormError(null);
-      setFormData({ date: new Date().toISOString().split('T')[0], symbol: '', quantity: '', price: '', totalAmount: '', action: 'BUY' });
+      setFormData({ date: new Date().toISOString().split('T')[0], symbol: '', companyName: '', quantity: '', price: '', totalAmount: '', action: 'BUY' });
     } catch (error) {
       setFormError(error instanceof Error ? error.message : '新增成交失敗');
     }
@@ -172,8 +246,8 @@ const InvestmentRecord: React.FC<Props> = ({ investments, prices, childId, child
           <Plus className="w-6 h-6 text-orange-500" />
           新增成交紀錄
         </h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-7 gap-4">
-          <div className="flex flex-col gap-2">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-4">
+          <div className="flex flex-col gap-2 lg:col-span-2">
             <label className="text-xs font-black text-slate-400 uppercase ml-1">日期</label>
             <input
               type="date"
@@ -182,16 +256,27 @@ const InvestmentRecord: React.FC<Props> = ({ investments, prices, childId, child
               className="border-2 border-slate-100 rounded-2xl p-3 bg-slate-50 focus:border-orange-500 focus:outline-none font-bold text-slate-700 w-full"
             />
           </div>
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-2 lg:col-span-2">
             <label className="text-xs font-black text-slate-400 uppercase ml-1">股票代碼</label>
             <input
               placeholder="例如 2330"
               value={formData.symbol}
-              onChange={(e) => setFormData({ ...formData, symbol: e.target.value })}
+              onChange={(e) => setFormData({ ...formData, symbol: e.target.value.toUpperCase() })}
+              onBlur={(e) => autofillCompanyName(e.target.value)}
               className="border-2 border-slate-100 rounded-2xl p-3 bg-slate-50 focus:border-orange-500 focus:outline-none font-bold text-slate-700"
             />
           </div>
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-2 lg:col-span-2">
+            <label className="text-xs font-black text-slate-400 uppercase ml-1">股票名稱</label>
+            <input
+              placeholder="例如 台積電"
+              value={formData.companyName}
+              onChange={(e) => setFormData({ ...formData, companyName: e.target.value })}
+              onBlur={(e) => autofillSymbol(e.target.value)}
+              className="border-2 border-slate-100 rounded-2xl p-3 bg-slate-50 focus:border-orange-500 focus:outline-none font-bold text-slate-700"
+            />
+          </div>
+          <div className="flex flex-col gap-2 lg:col-span-1">
             <label className="text-xs font-black text-slate-400 uppercase ml-1">股數</label>
             <input
               type="number"
@@ -204,7 +289,7 @@ const InvestmentRecord: React.FC<Props> = ({ investments, prices, childId, child
               className="border-2 border-slate-100 rounded-2xl p-3 bg-slate-50 focus:border-orange-500 focus:outline-none font-bold text-slate-700"
             />
           </div>
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-2 lg:col-span-1">
             <label className="text-xs font-black text-slate-400 uppercase ml-1">成交單價</label>
             <input
               type="number"
@@ -217,7 +302,7 @@ const InvestmentRecord: React.FC<Props> = ({ investments, prices, childId, child
               className="border-2 border-slate-100 rounded-2xl p-3 bg-slate-50 focus:border-orange-500 focus:outline-none font-bold text-slate-700"
             />
           </div>
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-2 lg:col-span-2">
             <label className="text-xs font-black text-slate-400 uppercase ml-1">成交總額 (含手續費)</label>
             <input
               type="number"
@@ -227,18 +312,18 @@ const InvestmentRecord: React.FC<Props> = ({ investments, prices, childId, child
               className="border-2 border-slate-100 rounded-2xl p-3 bg-slate-50 focus:border-orange-500 focus:outline-none font-bold text-slate-700"
             />
           </div>
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-2 lg:col-span-1">
             <label className="text-xs font-black text-slate-400 uppercase ml-1">動作</label>
             <select
               value={formData.action}
               onChange={(e) => setFormData({ ...formData, action: e.target.value as 'BUY' | 'SELL' })}
-              className="border-2 border-slate-100 rounded-2xl p-3 bg-slate-50 focus:border-orange-500 focus:outline-none font-bold text-slate-700"
+              className="border-2 border-slate-100 rounded-2xl p-3 bg-slate-50 focus:border-orange-500 focus:outline-none font-bold text-slate-700 whitespace-nowrap"
             >
-              <option value="BUY">買入 (扣款)</option>
-              <option value="SELL">賣出 (回款)</option>
+              <option value="BUY">買入</option>
+              <option value="SELL">賣出</option>
             </select>
           </div>
-          <div className="flex items-end">
+          <div className="flex items-end lg:col-span-1">
             <button className="w-full bg-orange-500 text-white py-4 rounded-2xl font-black hover:bg-orange-600 transition shadow-lg shadow-orange-100 active:scale-95">
               新增
             </button>
