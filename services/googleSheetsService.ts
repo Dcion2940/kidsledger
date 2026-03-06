@@ -1,5 +1,5 @@
 
-import { Transaction, Investment, Child } from "../types";
+import { Transaction, Investment, Child, Price } from "../types";
 
 export class GoogleSheetsService {
   private accessToken: string;
@@ -40,6 +40,27 @@ export class GoogleSheetsService {
     return await response.json();
   }
 
+  private async spreadsheetRequest(path: string, method: string = 'GET', body?: any) {
+    if (!this.sheetId) throw new Error("尚未設定 Google Sheet ID");
+
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${this.sheetId}${path}`;
+    const options: RequestInit = {
+      method,
+      headers: {
+        'Authorization': `Bearer ${this.accessToken}`,
+        'Content-Type': 'application/json'
+      }
+    };
+    if (body) options.body = JSON.stringify(body);
+
+    const response = await fetch(url, options);
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error?.message || 'Google Sheets API 錯誤');
+    }
+    return await response.json();
+  }
+
   private async findRowIndex(sheetName: string, id: string): Promise<number | null> {
     const data = await this.request(`${sheetName}!A:A`);
     const rows = data.values || [];
@@ -54,6 +75,38 @@ export class GoogleSheetsService {
       return rows.slice(1);
     }
     return rows;
+  }
+
+  private async ensurePricesSheetExists() {
+    try {
+      await this.request('Prices!A1:D1');
+      return;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (
+        !message.includes('Unable to parse range') &&
+        !message.includes('does not exist') &&
+        !message.includes('Prices')
+      ) {
+        throw error;
+      }
+    }
+
+    await this.spreadsheetRequest(':batchUpdate', 'POST', {
+      requests: [
+        {
+          addSheet: {
+            properties: {
+              title: 'Prices'
+            }
+          }
+        }
+      ]
+    });
+
+    await this.request('Prices!A1:D1', 'UPDATE', {
+      values: [['Symbol', 'CompanyName', 'Price', 'UpdatedAt']]
+    });
   }
 
   async getChildren(): Promise<Child[]> {
@@ -152,6 +205,32 @@ export class GoogleSheetsService {
     if (rowIndex) {
       const values = [['', '', '', '', '', '', '', '', '']];
       await this.request(`Investments!A${rowIndex}:I${rowIndex}`, 'UPDATE', { values });
+    }
+  }
+
+  async getPrices(): Promise<Price[]> {
+    try {
+      const data = await this.request('Prices!A:D');
+      const rows = this.stripHeader(data.values || [], 'Symbol');
+      return rows
+        .filter((row: any[]) => row[0])
+        .map((row: any[]) => ({
+          symbol: String(row[0]).toUpperCase(),
+          companyName: row[1] || '',
+          price: Number(row[2] || 0),
+          updatedAt: row[3] || ''
+        }));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (
+        message.includes('Unable to parse range') ||
+        message.includes('does not exist') ||
+        message.includes('Prices')
+      ) {
+        await this.ensurePricesSheetExists();
+        return [];
+      }
+      throw error;
     }
   }
 }

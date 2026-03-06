@@ -27,6 +27,13 @@ export interface Investment {
   action: 'BUY' | 'SELL';
 }
 
+export interface Price {
+  symbol: string;
+  companyName?: string;
+  price: number;
+  updatedAt?: string;
+}
+
 export interface Child {
   id: string;
   name: string;

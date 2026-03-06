@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Transaction, Investment, Child, UserProfile, TransactionType, AppSettings } from './types';
+import { Transaction, Investment, Child, UserProfile, TransactionType, AppSettings, Price } from './types';
 import TransactionForm from './components/TransactionForm';
 import InvestmentRecord from './components/InvestmentRecord';
 import { getFinancialAdvice } from './services/geminiService';
@@ -69,6 +69,7 @@ const App: React.FC = () => {
   const [selectedChildId, setSelectedChildId] = useState('');
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [investments, setInvestments] = useState<Investment[]>([]);
+  const [prices, setPrices] = useState<Price[]>([]);
   const [aiAdvice, setAiAdvice] = useState<string | null>(null);
   const [loadingAdvice, setLoadingAdvice] = useState(false);
   const [settings, setSettings] = useState<AppSettings>(storageManager.getSettings());
@@ -120,10 +121,11 @@ const App: React.FC = () => {
       if (sheetsService) {
         setSyncStatus('syncing');
         try {
-          const [loadedChildren, ts, invs] = await Promise.all([
+          const [loadedChildren, ts, invs, loadedPrices] = await Promise.all([
             sheetsService.getChildren(),
             sheetsService.getTransactions(),
-            sheetsService.getInvestments()
+            sheetsService.getInvestments(),
+            sheetsService.getPrices()
           ]);
           
           const finalChildren = loadedChildren.length > 0 ? loadedChildren : DEFAULT_CHILDREN;
@@ -134,6 +136,8 @@ const App: React.FC = () => {
           });
           setTransactions(ts.filter(t => t.id)); 
           setInvestments(invs.filter(i => i.id));
+          setPrices(loadedPrices.filter((p) => p.symbol));
+          localStorage.setItem('prices', JSON.stringify(loadedPrices.filter((p) => p.symbol)));
           setSyncStatus('success');
           setSyncError(null);
         } catch (e) {
@@ -146,6 +150,7 @@ const App: React.FC = () => {
           setSelectedChildId(final[0]?.id || '');
           setTransactions(JSON.parse(localStorage.getItem('transactions') || '[]'));
           setInvestments(JSON.parse(localStorage.getItem('investments') || '[]'));
+          setPrices(JSON.parse(localStorage.getItem('prices') || '[]'));
         }
       } else {
         const localChildren = JSON.parse(localStorage.getItem('children_list') || '[]');
@@ -154,6 +159,7 @@ const App: React.FC = () => {
         setSelectedChildId(finalChildren[0]?.id || '');
         setTransactions(JSON.parse(localStorage.getItem('transactions') || '[]'));
         setInvestments(JSON.parse(localStorage.getItem('investments') || '[]'));
+        setPrices(JSON.parse(localStorage.getItem('prices') || '[]'));
         setSyncStatus('idle');
         setSyncError(null);
       }
@@ -356,6 +362,12 @@ const App: React.FC = () => {
     ]);
     XLSX.utils.book_append_sheet(workbook, investmentsSheet, 'Investments');
 
+    const pricesSheet = XLSX.utils.aoa_to_sheet([
+      ['Symbol', 'CompanyName', 'Price', 'UpdatedAt'],
+      ...prices.map((p) => [p.symbol, p.companyName || '', p.price, p.updatedAt || ''])
+    ]);
+    XLSX.utils.book_append_sheet(workbook, pricesSheet, 'Prices');
+
     XLSX.writeFile(workbook, `KidsLedger_GoogleSheet_Template_${dateTag}.xlsx`);
   };
 
@@ -386,6 +398,16 @@ const App: React.FC = () => {
   const handleUpdateInvestment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingInvestment) return;
+
+    const validationError = validateInvestmentSequence(
+      investments.map(i => i.id === editingInvestment.id ? editingInvestment : i),
+      editingInvestment.childId
+    );
+    if (validationError) {
+      alert(validationError);
+      return;
+    }
+
     const updated = investments.map(i => i.id === editingInvestment.id ? editingInvestment : i);
     setInvestments(updated);
     localStorage.setItem('investments', JSON.stringify(updated));
@@ -395,9 +417,58 @@ const App: React.FC = () => {
 
   const handleDeleteInvestment = async (id: string) => {
     const updated = investments.filter(i => i.id !== id);
+
+    const deletedItem = investments.find((i) => i.id === id);
+    if (deletedItem) {
+      const validationError = validateInvestmentSequence(updated, deletedItem.childId);
+      if (validationError) {
+        alert(`無法刪除此筆紀錄：${validationError}`);
+        return;
+      }
+    }
+
     setInvestments(updated);
     localStorage.setItem('investments', JSON.stringify(updated));
     if (sheetsService) await runSheetSync(() => sheetsService.deleteInvestment(id));
+  };
+
+  const validateInvestmentSequence = (allInvestments: Investment[], childId: string): string | null => {
+    const holdings = new Map<string, number>();
+    const childRows = allInvestments
+      .filter((item) => item.childId === childId)
+      .sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
+
+    for (const item of childRows) {
+      if (!Number.isFinite(item.quantity) || item.quantity <= 0) {
+        return `股票 ${item.symbol} 的股數必須大於 0`;
+      }
+
+      const symbol = item.symbol.toUpperCase();
+      const current = holdings.get(symbol) || 0;
+      if (item.action === 'BUY') {
+        holdings.set(symbol, current + item.quantity);
+        continue;
+      }
+
+      if (current < item.quantity) {
+        return `股票 ${symbol} 在 ${item.date} 嘗試賣出 ${item.quantity} 股，但可用持股僅 ${current} 股`;
+      }
+      holdings.set(symbol, current - item.quantity);
+    }
+
+    return null;
+  };
+
+  const handleAddInvestment = async (inv: Investment) => {
+    const candidate = [inv, ...investments];
+    const validationError = validateInvestmentSequence(candidate, inv.childId);
+    if (validationError) {
+      throw new Error(validationError);
+    }
+
+    setInvestments(candidate);
+    localStorage.setItem('investments', JSON.stringify(candidate));
+    if (sheetsService) await runSheetSync(() => sheetsService.addInvestment(inv));
   };
 
   const activeChild = children.find(c => c.id === selectedChildId) || children[0] || DEFAULT_CHILDREN[0];
@@ -696,15 +767,11 @@ const App: React.FC = () => {
           ) : (
             <InvestmentRecord 
               investments={investments} 
+              prices={prices}
               childId={selectedChildId} 
               childName={activeChild.name} 
               availableBalance={balance} 
-              onAdd={async (inv) => {
-                const newList = [inv, ...investments];
-                setInvestments(newList);
-                localStorage.setItem('investments', JSON.stringify(newList));
-                if (sheetsService) await runSheetSync(() => sheetsService.addInvestment(inv));
-              }}
+              onAdd={handleAddInvestment}
               onEdit={(inv) => setEditingInvestment(inv)}
               onDelete={handleDeleteInvestment}
             />
