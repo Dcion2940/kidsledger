@@ -38,6 +38,7 @@ export interface Child {
   id: string;
   name: string;
   avatar: string;
+  role?: 'CHILD' | 'ADULT';
 }
 
 export interface UserProfile {

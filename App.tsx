@@ -34,7 +34,7 @@ import {
 } from 'recharts';
 
 const DEFAULT_CHILDREN: Child[] = [
-  { id: '1', name: '小明', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Ming' }
+  { id: '1', name: '小明', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Ming', role: 'CHILD' }
 ];
 
 const USER_STORAGE_KEY = 'kidsledger_user';
@@ -83,6 +83,13 @@ const App: React.FC = () => {
   
   const [newChildName, setNewChildName] = useState('');
   const [isAddingChild, setIsAddingChild] = useState(false);
+  const [adultManagerUnlocked, setAdultManagerUnlocked] = useState(false);
+  const [adultManagerEnabled, setAdultManagerEnabled] = useState(false);
+  const [showHiddenKeyPrompt, setShowHiddenKeyPrompt] = useState(false);
+  const [hiddenKeyInput, setHiddenKeyInput] = useState('');
+  const [hiddenKeyError, setHiddenKeyError] = useState<string | null>(null);
+  const [hiddenTapCount, setHiddenTapCount] = useState(0);
+  const [hiddenTapAt, setHiddenTapAt] = useState(0);
   const tokenClientRef = useRef<any>(null);
   const isSilentAuthRef = useRef(false);
 
@@ -116,6 +123,66 @@ const App: React.FC = () => {
     }
   };
 
+  const visibleChildren = useMemo(
+    () => children.filter((child) => adultManagerEnabled || (child.role || 'CHILD') !== 'ADULT'),
+    [children, adultManagerEnabled]
+  );
+
+  useEffect(() => {
+    if (!visibleChildren.some((child) => child.id === selectedChildId)) {
+      setSelectedChildId(visibleChildren[0]?.id || '');
+    }
+  }, [visibleChildren, selectedChildId]);
+
+  const handleSecretTitleTap = () => {
+    const now = Date.now();
+    const nextCount = now - hiddenTapAt < 1500 ? hiddenTapCount + 1 : 1;
+    setHiddenTapAt(now);
+    setHiddenTapCount(nextCount);
+    if (nextCount >= 7) {
+      setShowHiddenKeyPrompt(true);
+      setHiddenTapCount(0);
+      setHiddenKeyInput('');
+      setHiddenKeyError(null);
+    }
+  };
+
+  const verifyHiddenKey = async () => {
+    const password = hiddenKeyInput.trim();
+    if (!password) {
+      setHiddenKeyError('請輸入密碼');
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/verify-hidden-key', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ password })
+      });
+
+      if (!response.ok) {
+        setHiddenKeyError('密碼錯誤或驗證服務不可用');
+        return;
+      }
+
+      const data = await response.json();
+      if (!data?.ok) {
+        setHiddenKeyError('密碼錯誤');
+        return;
+      }
+
+      setAdultManagerUnlocked(true);
+      setShowHiddenKeyPrompt(false);
+      setHiddenKeyInput('');
+      setHiddenKeyError(null);
+    } catch {
+      setHiddenKeyError('驗證失敗，請確認目前網域已部署 Cloudflare Functions');
+    }
+  };
+
   useEffect(() => {
     const fetchData = async () => {
       if (sheetsService) {
@@ -128,7 +195,10 @@ const App: React.FC = () => {
             sheetsService.getPrices()
           ]);
           
-          const finalChildren = loadedChildren.length > 0 ? loadedChildren : DEFAULT_CHILDREN;
+          const finalChildren = (loadedChildren.length > 0 ? loadedChildren : DEFAULT_CHILDREN).map((child) => ({
+            ...child,
+            role: child.role || 'CHILD'
+          }));
           setChildren(finalChildren);
           setSelectedChildId(prevId => {
             if (finalChildren.some(c => c.id === prevId)) return prevId;
@@ -145,7 +215,10 @@ const App: React.FC = () => {
           setSyncStatus('error');
           setSyncError(e instanceof Error ? e.message : '無法讀取 Google Sheet');
           const localChildren = JSON.parse(localStorage.getItem('children_list') || '[]');
-          const final = localChildren.length > 0 ? localChildren : DEFAULT_CHILDREN;
+          const final = (localChildren.length > 0 ? localChildren : DEFAULT_CHILDREN).map((child: Child) => ({
+            ...child,
+            role: child.role || 'CHILD'
+          }));
           setChildren(final);
           setSelectedChildId(final[0]?.id || '');
           setTransactions(JSON.parse(localStorage.getItem('transactions') || '[]'));
@@ -154,7 +227,10 @@ const App: React.FC = () => {
         }
       } else {
         const localChildren = JSON.parse(localStorage.getItem('children_list') || '[]');
-        const finalChildren = localChildren.length > 0 ? localChildren : DEFAULT_CHILDREN;
+        const finalChildren = (localChildren.length > 0 ? localChildren : DEFAULT_CHILDREN).map((child: Child) => ({
+          ...child,
+          role: child.role || 'CHILD'
+        }));
         setChildren(finalChildren);
         setSelectedChildId(finalChildren[0]?.id || '');
         setTransactions(JSON.parse(localStorage.getItem('transactions') || '[]'));
@@ -301,7 +377,8 @@ const App: React.FC = () => {
     const newChild: Child = {
       id: Date.now().toString(),
       name: newChildName.trim(),
-      avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${newChildName.trim()}`
+      avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${newChildName.trim()}`,
+      role: adultManagerEnabled ? 'ADULT' : 'CHILD'
     };
     
     const updated = [...children, newChild];
@@ -345,8 +422,8 @@ const App: React.FC = () => {
     const workbook = XLSX.utils.book_new();
 
     const childrenSheet = XLSX.utils.aoa_to_sheet([
-      ['ID', 'Name', 'Avatar'],
-      ...children.map((c) => [c.id, c.name, c.avatar])
+      ['ID', 'Name', 'Avatar', 'Role'],
+      ...children.map((c) => [c.id, c.name, c.avatar, c.role || 'CHILD'])
     ]);
     XLSX.utils.book_append_sheet(workbook, childrenSheet, 'Children');
 
@@ -471,7 +548,7 @@ const App: React.FC = () => {
     if (sheetsService) await runSheetSync(() => sheetsService.addInvestment(inv));
   };
 
-  const activeChild = children.find(c => c.id === selectedChildId) || children[0] || DEFAULT_CHILDREN[0];
+  const activeChild = visibleChildren.find(c => c.id === selectedChildId) || visibleChildren[0] || DEFAULT_CHILDREN[0];
   const childTransactions = transactions.filter(t => t.childId === selectedChildId);
   const childInvestments = investments.filter(i => i.childId === selectedChildId);
 
@@ -574,7 +651,7 @@ const App: React.FC = () => {
           <div className="w-full px-4 md:px-6">
             <div className="flex items-center justify-between gap-3">
               <div className="flex-1 flex bg-slate-100 p-1.5 rounded-[1.5rem] shadow-inner overflow-x-auto no-scrollbar">
-                {children.map(child => (
+                {visibleChildren.map(child => (
                   <button
                     key={child.id}
                     onClick={() => setSelectedChildId(child.id)}
@@ -906,10 +983,32 @@ const App: React.FC = () => {
             <div className="space-y-10">
               <section>
                 <div className="flex justify-between items-center mb-6">
-                  <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest">小朋友管理</h3>
+                  <div className="flex items-center gap-3">
+                    <h3
+                      className="text-sm font-black text-slate-400 uppercase tracking-widest select-none cursor-pointer"
+                      onClick={handleSecretTitleTap}
+                      title={adultManagerUnlocked ? '已解鎖大人管理' : '連點 7 下可解鎖大人管理'}
+                    >
+                      小朋友管理
+                    </h3>
+                    {adultManagerUnlocked && (
+                      <button
+                        type="button"
+                        onClick={() => setAdultManagerEnabled((prev) => !prev)}
+                        className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors ${adultManagerEnabled ? 'bg-blue-600' : 'bg-slate-300'}`}
+                        aria-pressed={adultManagerEnabled}
+                        aria-label="切換大人管理"
+                      >
+                        <span className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${adultManagerEnabled ? 'translate-x-6' : 'translate-x-1'}`} />
+                      </button>
+                    )}
+                    {adultManagerUnlocked && (
+                      <span className="text-xs font-black text-slate-400 uppercase tracking-wider">大人管理</span>
+                    )}
+                  </div>
                   {!isAddingChild && (
                     <button onClick={() => setIsAddingChild(true)} className="flex items-center gap-2 text-blue-600 font-black text-sm bg-blue-50 px-5 py-2.5 rounded-2xl hover:bg-blue-100 transition shadow-sm">
-                      <UserPlus className="w-4 h-4" /> 新增小朋友
+                      <UserPlus className="w-4 h-4" /> {adultManagerEnabled ? '新增大人' : '新增小朋友'}
                     </button>
                   )}
                 </div>
@@ -922,22 +1021,27 @@ const App: React.FC = () => {
                       </div>
                       <div className="flex-1">
                         <label className="block text-xs font-black text-blue-400 uppercase mb-2 ml-1">姓名</label>
-                        <input autoFocus type="text" value={newChildName} onChange={(e) => setNewChildName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleAddChild()} placeholder="例如：小美" className="w-full bg-white border-2 border-blue-100 rounded-2xl px-5 py-3 focus:border-blue-500 focus:outline-none font-bold text-slate-700" />
+                        <input autoFocus type="text" value={newChildName} onChange={(e) => setNewChildName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleAddChild()} placeholder={adultManagerEnabled ? '例如：爸爸' : '例如：小美'} className="w-full bg-white border-2 border-blue-100 rounded-2xl px-5 py-3 focus:border-blue-500 focus:outline-none font-bold text-slate-700" />
                       </div>
                     </div>
                     <div className="flex gap-3">
-                      <button onClick={handleAddChild} className="flex-1 bg-blue-600 text-white font-black py-4 rounded-2xl hover:bg-blue-700 transition flex items-center justify-center gap-2 shadow-lg shadow-blue-100"><Plus className="w-5 h-5" /> 確定新增</button>
+                      <button onClick={handleAddChild} className="flex-1 bg-blue-600 text-white font-black py-4 rounded-2xl hover:bg-blue-700 transition flex items-center justify-center gap-2 shadow-lg shadow-blue-100"><Plus className="w-5 h-5" /> {adultManagerEnabled ? '確定新增大人' : '確定新增小朋友'}</button>
                       <button onClick={() => { setIsAddingChild(false); setNewChildName(''); }} className="px-6 py-4 font-black text-slate-400 hover:text-slate-600 bg-white rounded-2xl">取消</button>
                     </div>
                   </div>
                 )}
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {children.map(child => (
+                  {visibleChildren.map(child => (
                     <div key={child.id} className="flex items-center justify-between p-5 bg-slate-50 rounded-[1.5rem] border border-slate-100 group hover:border-blue-200 transition-all">
                       <div className="flex items-center gap-4">
                         <img src={child.avatar} className="w-12 h-12 rounded-2xl bg-white shadow-sm border border-slate-100" alt={child.name} />
-                        <span className="font-black text-slate-700 text-lg">{child.name}</span>
+                        <div>
+                          <span className="font-black text-slate-700 text-lg">{child.name}</span>
+                          <p className="text-[10px] font-black uppercase tracking-wider text-slate-300">
+                            {child.role === 'ADULT' ? '大人' : '小朋友'}
+                          </p>
+                        </div>
                       </div>
                       <button 
                         type="button"
@@ -997,6 +1101,45 @@ const App: React.FC = () => {
               </section>
 
               <button onClick={saveSettings} className="w-full bg-gray-900 text-white py-6 rounded-[2rem] font-black text-xl shadow-2xl hover:bg-black transition-all">儲存所有設定</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showHiddenKeyPrompt && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[70] flex items-center justify-center p-4">
+          <div className="bg-white rounded-[2rem] shadow-2xl p-8 w-full max-w-md">
+            <h3 className="text-xl font-black text-slate-800 mb-2">解鎖大人管理</h3>
+            <p className="text-sm text-slate-500 font-bold mb-5">請輸入管理密碼以顯示大人管理開關</p>
+            <input
+              type="password"
+              value={hiddenKeyInput}
+              onChange={(e) => setHiddenKeyInput(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && verifyHiddenKey()}
+              className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl p-4 text-sm font-bold focus:border-blue-500 focus:outline-none"
+              placeholder="請輸入密碼"
+              autoFocus
+            />
+            {hiddenKeyError && <p className="mt-3 text-sm font-bold text-rose-600">{hiddenKeyError}</p>}
+            <div className="flex gap-3 mt-6">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowHiddenKeyPrompt(false);
+                  setHiddenKeyInput('');
+                  setHiddenKeyError(null);
+                }}
+                className="flex-1 py-3 rounded-xl bg-slate-100 text-slate-500 font-black hover:bg-slate-200 transition"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={verifyHiddenKey}
+                className="flex-1 py-3 rounded-xl bg-blue-600 text-white font-black hover:bg-blue-700 transition"
+              >
+                驗證
+              </button>
             </div>
           </div>
         </div>

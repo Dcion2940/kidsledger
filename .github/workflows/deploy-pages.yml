@@ -31,6 +31,7 @@ jobs:
 
       - name: Build
         env:
+          VITE_BASE_PATH: /kidsledger/
           VITE_GOOGLE_CLIENT_ID: ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: npm run build
