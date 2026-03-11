@@ -170,6 +170,9 @@ const App: React.FC = () => {
         setAdultManagerUnlocked(false);
         setAdultManagerEnabled(false);
         storageManager.saveAdultManagerEnabled(false);
+        setShowHiddenKeyPrompt(false);
+        setHiddenKeyInput('');
+        setHiddenKeyError(null);
         return;
       }
       setShowHiddenKeyPrompt(true);
@@ -1046,9 +1049,8 @@ const App: React.FC = () => {
                 <div className="flex justify-between items-center mb-6">
                   <div className="flex items-center gap-3">
                     <h3
-                      className="text-sm font-black text-slate-400 uppercase tracking-widest select-none cursor-pointer"
+                      className="text-sm font-black text-slate-400 uppercase tracking-widest select-none"
                       onClick={handleSecretTitleTap}
-                      title={adultManagerUnlocked ? '已解鎖大人管理' : '連點 7 下可解鎖大人管理'}
                     >
                       小朋友管理
                     </h3>
