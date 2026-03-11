@@ -2,6 +2,7 @@
 import { AppSettings } from '../types';
 
 const SETTINGS_KEY = 'kidsledger_settings';
+const ADULT_MANAGER_ENABLED_KEY = 'kidsledger_adult_manager_enabled';
 const DEFAULT_SETTINGS: AppSettings = {
   googleSheetId: '',
   aiMentorEnabled: true,
@@ -29,5 +30,15 @@ export const storageManager = {
   },
   clearSettings: () => {
     localStorage.removeItem(SETTINGS_KEY);
+  },
+  getAdultManagerEnabled: (): boolean => {
+    const saved = localStorage.getItem(ADULT_MANAGER_ENABLED_KEY);
+    return saved === 'true';
+  },
+  saveAdultManagerEnabled: (enabled: boolean) => {
+    localStorage.setItem(ADULT_MANAGER_ENABLED_KEY, enabled ? 'true' : 'false');
+  },
+  clearAdultManagerEnabled: () => {
+    localStorage.removeItem(ADULT_MANAGER_ENABLED_KEY);
   }
 };

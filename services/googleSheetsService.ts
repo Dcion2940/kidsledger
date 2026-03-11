@@ -110,26 +110,33 @@ export class GoogleSheetsService {
   }
 
   async getChildren(): Promise<Child[]> {
-    const data = await this.request('Children!A:D');
+    const data = await this.request('Children!A:E');
     const rows = this.stripHeader(data.values || [], 'ID');
     return rows
       .filter((row: any[]) => row[0] && row[1])
-      .map((row: any[]) => ({
-        id: row[0],
-        name: row[1],
-        avatar: row[2],
-        role: row[3] === 'ADULT' ? 'ADULT' : 'CHILD'
-      }));
+      .map((row: any[]) => {
+        const col3 = row[3] || '';
+        const col4 = row[4] || '';
+        const role = col3 === 'ADULT' ? 'ADULT' : 'CHILD';
+        const avatarSeed = col3 === 'CHILD' || col3 === 'ADULT' ? (col4 || '') : (col3 || col4 || '');
+        return {
+          id: row[0],
+          name: row[1],
+          avatar: row[2],
+          role,
+          avatarSeed
+        };
+      });
   }
 
   async syncChildren(children: Child[]) {
-    const header = ['ID', 'Name', 'Avatar', 'Role'];
-    const rows = children.map(c => [c.id, c.name, c.avatar, c.role || 'CHILD']);
+    const header = ['ID', 'Name', 'Avatar', 'Role', 'AvatarSeed'];
+    const rows = children.map(c => [c.id, c.name, c.avatar, c.role || 'CHILD', c.avatarSeed || '']);
     // 清除至第 51 行
-    const emptyRows = Array(Math.max(0, 50 - rows.length)).fill(['', '', '', '']);
+    const emptyRows = Array(Math.max(0, 50 - rows.length)).fill(['', '', '', '', '']);
     const values = [header, ...rows, ...emptyRows];
     
-    await this.request('Children!A1:D51', 'UPDATE', { values });
+    await this.request('Children!A1:E51', 'UPDATE', { values });
     localStorage.setItem('children_list', JSON.stringify(children));
   }
 

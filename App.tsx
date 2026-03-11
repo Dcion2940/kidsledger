@@ -23,7 +23,8 @@ import {
   X,
   Plus,
   AlertTriangle,
-  Menu
+  Menu,
+  RefreshCcw
 } from 'lucide-react';
 import { 
   PieChart,
@@ -34,8 +35,31 @@ import {
 } from 'recharts';
 
 const DEFAULT_CHILDREN: Child[] = [
-  { id: '1', name: '小明', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Ming', role: 'CHILD' }
+  { id: '1', name: '小明', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Ming', role: 'CHILD', avatarSeed: 'Ming' }
 ];
+
+const buildAvatarUrl = (seed: string) => `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(seed)}`;
+
+const extractAvatarSeed = (avatar?: string) => {
+  if (!avatar) return '';
+  try {
+    const url = new URL(avatar);
+    return url.searchParams.get('seed') || '';
+  } catch {
+    return '';
+  }
+};
+
+const normalizeChild = (child: Child): Child => {
+  const role = child.role || 'CHILD';
+  const avatarSeed = child.avatarSeed || extractAvatarSeed(child.avatar) || child.name || child.id;
+  return {
+    ...child,
+    role,
+    avatarSeed,
+    avatar: child.avatar || buildAvatarUrl(avatarSeed)
+  };
+};
 
 const USER_STORAGE_KEY = 'kidsledger_user';
 
@@ -84,12 +108,13 @@ const App: React.FC = () => {
   const [newChildName, setNewChildName] = useState('');
   const [isAddingChild, setIsAddingChild] = useState(false);
   const [adultManagerUnlocked, setAdultManagerUnlocked] = useState(false);
-  const [adultManagerEnabled, setAdultManagerEnabled] = useState(false);
+  const [adultManagerEnabled, setAdultManagerEnabled] = useState<boolean>(() => storageManager.getAdultManagerEnabled());
   const [showHiddenKeyPrompt, setShowHiddenKeyPrompt] = useState(false);
   const [hiddenKeyInput, setHiddenKeyInput] = useState('');
   const [hiddenKeyError, setHiddenKeyError] = useState<string | null>(null);
   const [hiddenTapCount, setHiddenTapCount] = useState(0);
   const [hiddenTapAt, setHiddenTapAt] = useState(0);
+  const [avatarChangeArmed, setAvatarChangeArmed] = useState(false);
   const tokenClientRef = useRef<any>(null);
   const isSilentAuthRef = useRef(false);
 
@@ -140,11 +165,22 @@ const App: React.FC = () => {
     setHiddenTapAt(now);
     setHiddenTapCount(nextCount);
     if (nextCount >= 7) {
-      setShowHiddenKeyPrompt(true);
       setHiddenTapCount(0);
+      if (adultManagerUnlocked) {
+        setAdultManagerUnlocked(false);
+        setAdultManagerEnabled(false);
+        storageManager.saveAdultManagerEnabled(false);
+        return;
+      }
+      setShowHiddenKeyPrompt(true);
       setHiddenKeyInput('');
       setHiddenKeyError(null);
     }
+  };
+
+  const setAdultManagerEnabledWithStorage = (enabled: boolean) => {
+    setAdultManagerEnabled(enabled);
+    storageManager.saveAdultManagerEnabled(enabled);
   };
 
   const verifyHiddenKey = async () => {
@@ -195,10 +231,7 @@ const App: React.FC = () => {
             sheetsService.getPrices()
           ]);
           
-          const finalChildren = (loadedChildren.length > 0 ? loadedChildren : DEFAULT_CHILDREN).map((child) => ({
-            ...child,
-            role: child.role || 'CHILD'
-          }));
+          const finalChildren = (loadedChildren.length > 0 ? loadedChildren : DEFAULT_CHILDREN).map(normalizeChild);
           setChildren(finalChildren);
           setSelectedChildId(prevId => {
             if (finalChildren.some(c => c.id === prevId)) return prevId;
@@ -215,10 +248,7 @@ const App: React.FC = () => {
           setSyncStatus('error');
           setSyncError(e instanceof Error ? e.message : '無法讀取 Google Sheet');
           const localChildren = JSON.parse(localStorage.getItem('children_list') || '[]');
-          const final = (localChildren.length > 0 ? localChildren : DEFAULT_CHILDREN).map((child: Child) => ({
-            ...child,
-            role: child.role || 'CHILD'
-          }));
+          const final = (localChildren.length > 0 ? localChildren : DEFAULT_CHILDREN).map((child: Child) => normalizeChild(child));
           setChildren(final);
           setSelectedChildId(final[0]?.id || '');
           setTransactions(JSON.parse(localStorage.getItem('transactions') || '[]'));
@@ -227,10 +257,7 @@ const App: React.FC = () => {
         }
       } else {
         const localChildren = JSON.parse(localStorage.getItem('children_list') || '[]');
-        const finalChildren = (localChildren.length > 0 ? localChildren : DEFAULT_CHILDREN).map((child: Child) => ({
-          ...child,
-          role: child.role || 'CHILD'
-        }));
+        const finalChildren = (localChildren.length > 0 ? localChildren : DEFAULT_CHILDREN).map((child: Child) => normalizeChild(child));
         setChildren(finalChildren);
         setSelectedChildId(finalChildren[0]?.id || '');
         setTransactions(JSON.parse(localStorage.getItem('transactions') || '[]'));
@@ -360,6 +387,13 @@ const App: React.FC = () => {
     setUser(null);
   };
 
+  const closeSettingsModal = () => {
+    setShowSettings(false);
+    setAvatarChangeArmed(false);
+    setIsAddingChild(false);
+    setNewChildName('');
+  };
+
   const saveSettings = () => {
     const newSettings = {
       ...settings,
@@ -368,16 +402,19 @@ const App: React.FC = () => {
     };
     setSettings(newSettings);
     storageManager.saveSettings(newSettings);
-    setShowSettings(false);
+    closeSettingsModal();
   };
 
   const handleAddChild = async () => {
     if (!newChildName.trim()) return;
+    const trimmedName = newChildName.trim();
+    const avatarSeed = `${trimmedName}-${Date.now()}`;
     
     const newChild: Child = {
       id: Date.now().toString(),
-      name: newChildName.trim(),
-      avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${newChildName.trim()}`,
+      name: trimmedName,
+      avatarSeed,
+      avatar: buildAvatarUrl(avatarSeed),
       role: adultManagerEnabled ? 'ADULT' : 'CHILD'
     };
     
@@ -390,6 +427,30 @@ const App: React.FC = () => {
     await runSheetSync(() => sheetsService!.syncChildren(updated));
     
     if (!selectedChildId) setSelectedChildId(newChild.id);
+  };
+
+  const handleRefreshAvatar = async (childId: string) => {
+    if (!avatarChangeArmed) {
+      alert('更換頭像需要再次確認：請再點一次更換頭像按鈕以執行。');
+      setAvatarChangeArmed(true);
+      return;
+    }
+
+    const updated = children.map((child) => {
+      if (child.id !== childId) return child;
+      const nextSeed = `${child.name}-${Date.now()}`;
+      return {
+        ...child,
+        avatarSeed: nextSeed,
+        avatar: buildAvatarUrl(nextSeed)
+      };
+    });
+
+    setChildren(updated);
+    localStorage.setItem('children_list', JSON.stringify(updated));
+    if (sheetsService) {
+      await runSheetSync(() => sheetsService.syncChildren(updated));
+    }
   };
 
   const confirmRemoveChild = async () => {
@@ -422,8 +483,8 @@ const App: React.FC = () => {
     const workbook = XLSX.utils.book_new();
 
     const childrenSheet = XLSX.utils.aoa_to_sheet([
-      ['ID', 'Name', 'Avatar', 'Role'],
-      ...children.map((c) => [c.id, c.name, c.avatar, c.role || 'CHILD'])
+      ['ID', 'Name', 'Avatar', 'Role', 'AvatarSeed'],
+      ...children.map((c) => [c.id, c.name, c.avatar, c.role || 'CHILD', c.avatarSeed || ''])
     ]);
     XLSX.utils.book_append_sheet(workbook, childrenSheet, 'Children');
 
@@ -975,7 +1036,7 @@ const App: React.FC = () => {
               <h2 className="text-2xl font-black text-slate-800 flex items-center gap-3">
                 <Settings className="text-blue-600" /> 系統與小朋友設定
               </h2>
-              <button onClick={() => setShowSettings(false)} className="p-2 hover:bg-slate-100 rounded-full transition">
+              <button onClick={closeSettingsModal} className="p-2 hover:bg-slate-100 rounded-full transition">
                 <X className="w-6 h-6 text-slate-400" />
               </button>
             </div>
@@ -994,7 +1055,7 @@ const App: React.FC = () => {
                     {adultManagerUnlocked && (
                       <button
                         type="button"
-                        onClick={() => setAdultManagerEnabled((prev) => !prev)}
+                        onClick={() => setAdultManagerEnabledWithStorage(!adultManagerEnabled)}
                         className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors ${adultManagerEnabled ? 'bg-blue-600' : 'bg-slate-300'}`}
                         aria-pressed={adultManagerEnabled}
                         aria-label="切換大人管理"
@@ -1043,14 +1104,24 @@ const App: React.FC = () => {
                           </p>
                         </div>
                       </div>
-                      <button 
-                        type="button"
-                        onClick={() => setChildToDelete(child)} 
-                        className="p-3 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-all relative z-10"
-                        title="刪除"
-                      >
-                        <UserMinus className="w-6 h-6" />
-                      </button>
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => handleRefreshAvatar(child.id)}
+                          className="p-3 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all relative z-10"
+                          title="更換頭像"
+                        >
+                          <RefreshCcw className="w-5 h-5" />
+                        </button>
+                        <button 
+                          type="button"
+                          onClick={() => setChildToDelete(child)} 
+                          className="p-3 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-all relative z-10"
+                          title="刪除"
+                        >
+                          <UserMinus className="w-6 h-6" />
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
