@@ -109,6 +109,14 @@ const getSavedInvestments = (): Investment[] => {
   }
 };
 
+const getSavedChildren = (): Child[] => {
+  try {
+    return (JSON.parse(localStorage.getItem('children_list') || '[]') as Child[]).map(normalizeChild);
+  } catch {
+    return [];
+  }
+};
+
 declare global {
   interface Window {
     google?: any;
@@ -187,6 +195,182 @@ const App: React.FC = () => {
     } catch (error) {
       console.warn('Unable to load D1 prices, fallback to local cache.', error);
       return getSavedPrices();
+    }
+  };
+
+  const loadSettingsFromApi = async (): Promise<AppSettings> => {
+    try {
+      const response = await fetch('/api/settings');
+      if (!response.ok) {
+        throw new Error(`Settings API ${response.status}`);
+      }
+      const data = await response.json();
+      const loadedSettingsFromD1: AppSettings = {
+        googleSheetId: String(data?.settings?.googleSheetId || ''),
+        aiMentorEnabled: data?.settings?.aiMentorEnabled !== false,
+        aiApiLink: String(data?.settings?.aiApiLink || '')
+      };
+      const localSettings = storageManager.getSettings();
+      const d1IsDefault =
+        !loadedSettingsFromD1.googleSheetId &&
+        loadedSettingsFromD1.aiMentorEnabled &&
+        !loadedSettingsFromD1.aiApiLink;
+      const localHasValue =
+        !!localSettings.googleSheetId ||
+        !localSettings.aiMentorEnabled ||
+        !!localSettings.aiApiLink;
+
+      if (d1IsDefault && localHasValue) {
+        await saveSettingsToD1(localSettings);
+        storageManager.saveSettings(localSettings);
+        return localSettings;
+      }
+
+      storageManager.saveSettings(loadedSettingsFromD1);
+      return loadedSettingsFromD1;
+    } catch (error) {
+      console.warn('Unable to load D1 settings, fallback to local cache.', error);
+      return storageManager.getSettings();
+    }
+  };
+
+  const saveSettingsToD1 = async (nextSettings: AppSettings) => {
+    const response = await fetch('/api/settings', {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(nextSettings)
+    });
+
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data?.error || `Settings API ${response.status}`);
+    }
+  };
+
+  const loadChildrenFromApi = async (): Promise<Child[]> => {
+    const normalize = (items: any[]) =>
+      items
+        .map((item: any) =>
+          normalizeChild({
+            id: String(item?.id || ''),
+            name: String(item?.name || ''),
+            avatar: String(item?.avatar || ''),
+            role: String(item?.role || 'CHILD') as 'CHILD' | 'ADULT',
+            avatarSeed: String(item?.avatarSeed || '')
+          })
+        )
+        .filter((item: Child) => item.id && item.name);
+
+    try {
+      const response = await fetch('/api/children');
+      if (!response.ok) {
+        throw new Error(`Children API ${response.status}`);
+      }
+
+      const data = await response.json();
+      const d1Children = normalize(Array.isArray(data?.children) ? data.children : []);
+      if (!sheetsService) {
+        if (!d1Children.length) {
+          const localChildren = getSavedChildren();
+          if (localChildren.length) {
+            await fetch('/api/children/bulk-upsert', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({ items: localChildren })
+            });
+            localStorage.setItem('children_list', JSON.stringify(localChildren));
+            return localChildren;
+          }
+        }
+        const finalChildren = d1Children.length ? d1Children : DEFAULT_CHILDREN.map(normalizeChild);
+        localStorage.setItem('children_list', JSON.stringify(finalChildren));
+        return finalChildren;
+      }
+
+      try {
+        const sheetChildren = (await sheetsService.getChildren()).map(normalizeChild).filter((item) => item.id && item.name);
+        if (!d1Children.length && sheetChildren.length) {
+          const bootstrapResponse = await fetch('/api/children/bulk-upsert', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ items: sheetChildren })
+          });
+          if (!bootstrapResponse.ok) {
+            const bootstrapData = await bootstrapResponse.json().catch(() => ({}));
+            throw new Error(bootstrapData?.error || `Children bootstrap ${bootstrapResponse.status}`);
+          }
+          localStorage.setItem('children_list', JSON.stringify(sheetChildren));
+          return sheetChildren;
+        }
+
+        const merged = new Map<string, Child>();
+        d1Children.forEach((item) => merged.set(item.id, item));
+        sheetChildren.forEach((item) => {
+          if (!merged.has(item.id)) {
+            merged.set(item.id, item);
+          }
+        });
+        const mergedList = Array.from(merged.values());
+        const finalChildren = mergedList.length ? mergedList : DEFAULT_CHILDREN.map(normalizeChild);
+        localStorage.setItem('children_list', JSON.stringify(finalChildren));
+        return finalChildren;
+      } catch (sheetError) {
+        console.warn('Unable to merge Google Sheet children, use D1 only.', sheetError);
+        const finalChildren = d1Children.length ? d1Children : DEFAULT_CHILDREN.map(normalizeChild);
+        localStorage.setItem('children_list', JSON.stringify(finalChildren));
+        return finalChildren;
+      }
+    } catch (error) {
+      console.warn('Unable to load D1 children, fallback to local cache.', error);
+      const localChildren = getSavedChildren();
+      return localChildren.length ? localChildren : DEFAULT_CHILDREN.map(normalizeChild);
+    }
+  };
+
+  const createChildInD1 = async (child: Child) => {
+    const response = await fetch('/api/children', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(child)
+    });
+
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data?.error || `Children API ${response.status}`);
+    }
+  };
+
+  const updateChildInD1 = async (child: Child) => {
+    const response = await fetch(`/api/children/${encodeURIComponent(child.id)}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(child)
+    });
+
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data?.error || `Children API ${response.status}`);
+    }
+  };
+
+  const deleteChildInD1 = async (id: string) => {
+    const response = await fetch(`/api/children/${encodeURIComponent(id)}`, {
+      method: 'DELETE'
+    });
+
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data?.error || `Children API ${response.status}`);
     }
   };
 
@@ -566,11 +750,14 @@ const App: React.FC = () => {
 
   useEffect(() => {
     const fetchData = async () => {
+      const resolvedSettings = await loadSettingsFromApi();
+      setSettings(resolvedSettings);
+
       if (sheetsService) {
         setSyncStatus('syncing');
         try {
           const [loadedChildren, ts, invs, loadedPrices] = await Promise.all([
-            sheetsService.getChildren(),
+            loadChildrenFromApi(),
             loadTransactionsFromApi(),
             loadInvestmentsFromApi(),
             loadPricesFromApi()
@@ -601,8 +788,7 @@ const App: React.FC = () => {
           setPrices(getSavedPrices());
         }
       } else {
-        const localChildren = JSON.parse(localStorage.getItem('children_list') || '[]');
-        const finalChildren = (localChildren.length > 0 ? localChildren : DEFAULT_CHILDREN).map((child: Child) => normalizeChild(child));
+        const finalChildren = await loadChildrenFromApi();
         setChildren(finalChildren);
         setSelectedChildId(finalChildren[0]?.id || '');
         setTransactions(await loadTransactionsFromApi());
@@ -778,7 +964,7 @@ const App: React.FC = () => {
     setNewChildName('');
   };
 
-  const saveSettings = () => {
+  const saveSettings = async () => {
     const newSettings = {
       ...settings,
       googleSheetId: settings.googleSheetId.trim(),
@@ -786,6 +972,16 @@ const App: React.FC = () => {
     };
     setSettings(newSettings);
     storageManager.saveSettings(newSettings);
+    try {
+      setSyncStatus('syncing');
+      await saveSettingsToD1(newSettings);
+      setSyncStatus('success');
+      setSyncError(null);
+    } catch (error) {
+      console.error('Save settings in D1 failed:', error);
+      setSyncStatus('error');
+      setSyncError(error instanceof Error ? error.message : '設定同步到 D1 失敗');
+    }
     closeSettingsModal();
   };
 
@@ -808,7 +1004,16 @@ const App: React.FC = () => {
     setIsAddingChild(false);
     localStorage.setItem('children_list', JSON.stringify(updated));
     
-    await runSheetSync((service) => service.syncChildren(updated));
+    try {
+      setSyncStatus('syncing');
+      await createChildInD1(newChild);
+      setSyncStatus('success');
+      setSyncError(null);
+    } catch (error) {
+      console.error('Create child in D1 failed:', error);
+      setSyncStatus('error');
+      setSyncError(error instanceof Error ? error.message : '新增小朋友同步到 D1 失敗');
+    }
     
     if (!selectedChildId) setSelectedChildId(newChild.id);
   };
@@ -832,8 +1037,17 @@ const App: React.FC = () => {
 
     setChildren(updated);
     localStorage.setItem('children_list', JSON.stringify(updated));
-    if (sheetsService) {
-      await runSheetSync((service) => service.syncChildren(updated));
+    const target = updated.find((child) => child.id === childId);
+    if (!target) return;
+    try {
+      setSyncStatus('syncing');
+      await updateChildInD1(target);
+      setSyncStatus('success');
+      setSyncError(null);
+    } catch (error) {
+      console.error('Update child in D1 failed:', error);
+      setSyncStatus('error');
+      setSyncError(error instanceof Error ? error.message : '更換頭像同步到 D1 失敗');
     }
   };
 
@@ -855,8 +1069,15 @@ const App: React.FC = () => {
       setSelectedChildId(updated[0]?.id || '');
     }
     
-    if (sheetsService) {
-      await runSheetSync((service) => service.syncChildren(updated));
+    try {
+      setSyncStatus('syncing');
+      await deleteChildInD1(id);
+      setSyncStatus('success');
+      setSyncError(null);
+    } catch (error) {
+      console.error('Delete child in D1 failed:', error);
+      setSyncStatus('error');
+      setSyncError(error instanceof Error ? error.message : '刪除小朋友同步到 D1 失敗');
     }
     setChildToDelete(null);
   };
