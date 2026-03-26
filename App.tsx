@@ -3,7 +3,6 @@ import { Transaction, Investment, Child, UserProfile, TransactionType, AppSettin
 import TransactionForm from './components/TransactionForm';
 import InvestmentRecord from './components/InvestmentRecord';
 import { getFinancialAdvice } from './services/geminiService';
-import { GoogleSheetsService } from './services/googleSheetsService';
 import { storageManager } from './utils/storage';
 import { 
   Wallet, 
@@ -162,13 +161,6 @@ const App: React.FC = () => {
   const pendingTokenRequestRef = useRef<{ resolve: (accessToken: string) => void; reject: (error: Error) => void } | null>(null);
   const refreshTokenPromiseRef = useRef<Promise<string> | null>(null);
 
-  const sheetsService = useMemo(() => {
-    if (user && settings.googleSheetId) {
-      return new GoogleSheetsService(user.accessToken, settings.googleSheetId);
-    }
-    return null;
-  }, [user, settings.googleSheetId]);
-
   const loadPricesFromApi = async (): Promise<Price[]> => {
     try {
       const response = await fetch('/api/prices');
@@ -271,61 +263,28 @@ const App: React.FC = () => {
 
       const data = await response.json();
       const d1Children = normalize(Array.isArray(data?.children) ? data.children : []);
-      if (!sheetsService) {
-        if (!d1Children.length) {
-          const localChildren = getSavedChildren();
-          if (localChildren.length) {
-            await fetch('/api/children/bulk-upsert', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json'
-              },
-              body: JSON.stringify({ items: localChildren })
-            });
-            localStorage.setItem('children_list', JSON.stringify(localChildren));
-            return localChildren;
-          }
-        }
-        const finalChildren = d1Children.length ? d1Children : DEFAULT_CHILDREN.map(normalizeChild);
-        localStorage.setItem('children_list', JSON.stringify(finalChildren));
-        return finalChildren;
-      }
-
-      try {
-        const sheetChildren = (await sheetsService.getChildren()).map(normalizeChild).filter((item) => item.id && item.name);
-        if (!d1Children.length && sheetChildren.length) {
+      if (!d1Children.length) {
+        const localChildren = getSavedChildren();
+        if (localChildren.length) {
           const bootstrapResponse = await fetch('/api/children/bulk-upsert', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ items: sheetChildren })
+            body: JSON.stringify({ items: localChildren })
           });
           if (!bootstrapResponse.ok) {
             const bootstrapData = await bootstrapResponse.json().catch(() => ({}));
             throw new Error(bootstrapData?.error || `Children bootstrap ${bootstrapResponse.status}`);
           }
-          localStorage.setItem('children_list', JSON.stringify(sheetChildren));
-          return sheetChildren;
+          localStorage.setItem('children_list', JSON.stringify(localChildren));
+          return localChildren;
         }
-
-        const merged = new Map<string, Child>();
-        d1Children.forEach((item) => merged.set(item.id, item));
-        sheetChildren.forEach((item) => {
-          if (!merged.has(item.id)) {
-            merged.set(item.id, item);
-          }
-        });
-        const mergedList = Array.from(merged.values());
-        const finalChildren = mergedList.length ? mergedList : DEFAULT_CHILDREN.map(normalizeChild);
-        localStorage.setItem('children_list', JSON.stringify(finalChildren));
-        return finalChildren;
-      } catch (sheetError) {
-        console.warn('Unable to merge Google Sheet children, use D1 only.', sheetError);
-        const finalChildren = d1Children.length ? d1Children : DEFAULT_CHILDREN.map(normalizeChild);
-        localStorage.setItem('children_list', JSON.stringify(finalChildren));
-        return finalChildren;
       }
+
+      const finalChildren = d1Children.length ? d1Children : DEFAULT_CHILDREN.map(normalizeChild);
+      localStorage.setItem('children_list', JSON.stringify(finalChildren));
+      return finalChildren;
     } catch (error) {
       console.warn('Unable to load D1 children, fallback to local cache.', error);
       const localChildren = getSavedChildren();
@@ -396,49 +355,30 @@ const App: React.FC = () => {
 
       const data = await response.json();
       const d1Transactions = normalize(Array.isArray(data?.transactions) ? data.transactions : []);
-
-      if (!sheetsService) {
-        localStorage.setItem('transactions', JSON.stringify(d1Transactions));
-        return d1Transactions;
-      }
-
-      try {
-        const sheetTransactions = (await sheetsService.getTransactions()).filter((item) => item.id);
-        if (!d1Transactions.length && sheetTransactions.length) {
+      if (!d1Transactions.length) {
+        const localTransactions = getSavedTransactions().filter((item) => item.id);
+        if (localTransactions.length) {
           const bootstrapResponse = await fetch('/api/transactions/bulk-upsert', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ items: sheetTransactions })
+            body: JSON.stringify({ items: localTransactions })
           });
-
           if (!bootstrapResponse.ok) {
             const bootstrapData = await bootstrapResponse.json().catch(() => ({}));
             throw new Error(bootstrapData?.error || `Transactions bootstrap ${bootstrapResponse.status}`);
           }
-
-          const sortedSheetTransactions = [...sheetTransactions].sort(
+          const sortedLocalTransactions = [...localTransactions].sort(
             (a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id)
           );
-          localStorage.setItem('transactions', JSON.stringify(sortedSheetTransactions));
-          return sortedSheetTransactions;
+          localStorage.setItem('transactions', JSON.stringify(sortedLocalTransactions));
+          return sortedLocalTransactions;
         }
-
-        const merged = new Map<string, Transaction>();
-        d1Transactions.forEach((item) => merged.set(item.id, item));
-        sheetTransactions.forEach((item) => {
-          if (!merged.has(item.id)) {
-            merged.set(item.id, item);
-          }
-        });
-        const mergedList = Array.from(merged.values()).sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
-        localStorage.setItem('transactions', JSON.stringify(mergedList));
-        return mergedList;
-      } catch (sheetError) {
-        console.warn('Unable to merge Google Sheet transactions, use D1 only.', sheetError);
-        return d1Transactions;
       }
+
+      localStorage.setItem('transactions', JSON.stringify(d1Transactions));
+      return d1Transactions;
     } catch (error) {
       console.warn('Unable to load D1 transactions, fallback to local cache.', error);
       return getSavedTransactions();
@@ -471,49 +411,30 @@ const App: React.FC = () => {
 
       const data = await response.json();
       const d1Investments = normalize(Array.isArray(data?.investments) ? data.investments : []);
-
-      if (!sheetsService) {
-        localStorage.setItem('investments', JSON.stringify(d1Investments));
-        return d1Investments;
-      }
-
-      try {
-        const sheetInvestments = (await sheetsService.getInvestments()).filter((item) => item.id);
-        if (!d1Investments.length && sheetInvestments.length) {
+      if (!d1Investments.length) {
+        const localInvestments = getSavedInvestments().filter((item) => item.id);
+        if (localInvestments.length) {
           const bootstrapResponse = await fetch('/api/investments/bulk-upsert', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ items: sheetInvestments })
+            body: JSON.stringify({ items: localInvestments })
           });
-
           if (!bootstrapResponse.ok) {
             const bootstrapData = await bootstrapResponse.json().catch(() => ({}));
             throw new Error(bootstrapData?.error || `Investments bootstrap ${bootstrapResponse.status}`);
           }
-
-          const sortedSheetInvestments = [...sheetInvestments].sort(
+          const sortedLocalInvestments = [...localInvestments].sort(
             (a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id)
           );
-          localStorage.setItem('investments', JSON.stringify(sortedSheetInvestments));
-          return sortedSheetInvestments;
+          localStorage.setItem('investments', JSON.stringify(sortedLocalInvestments));
+          return sortedLocalInvestments;
         }
-
-        const merged = new Map<string, Investment>();
-        d1Investments.forEach((item) => merged.set(item.id, item));
-        sheetInvestments.forEach((item) => {
-          if (!merged.has(item.id)) {
-            merged.set(item.id, item);
-          }
-        });
-        const mergedList = Array.from(merged.values()).sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
-        localStorage.setItem('investments', JSON.stringify(mergedList));
-        return mergedList;
-      } catch (sheetError) {
-        console.warn('Unable to merge Google Sheet investments, use D1 only.', sheetError);
-        return d1Investments;
       }
+
+      localStorage.setItem('investments', JSON.stringify(d1Investments));
+      return d1Investments;
     } catch (error) {
       console.warn('Unable to load D1 investments, fallback to local cache.', error);
       return getSavedInvestments();
@@ -631,49 +552,6 @@ const App: React.FC = () => {
     }
   }, [user]);
 
-  const isGoogleAuthError = (error: unknown) => {
-    const message = error instanceof Error ? error.message : String(error);
-    return /401|invalid credentials|invalid authentication credentials|unauthenticated|login required/i.test(message);
-  };
-
-  const runSheetSync = async (operation: (service: GoogleSheetsService) => Promise<void>) => {
-    if (!sheetsService) return;
-
-    setSyncStatus('syncing');
-    try {
-      let activeService = sheetsService;
-      const shouldRefreshBeforeSync = !user?.expiresAt || user.expiresAt < Date.now() + 60_000;
-      if (shouldRefreshBeforeSync) {
-        const refreshedAccessToken = await refreshGoogleAccessToken('');
-        activeService = new GoogleSheetsService(refreshedAccessToken, settings.googleSheetId);
-      }
-
-      await operation(activeService);
-      setSyncStatus('success');
-      setSyncError(null);
-    } catch (error) {
-      if (isGoogleAuthError(error)) {
-        try {
-          const refreshedAccessToken = await refreshGoogleAccessToken('');
-          const refreshedService = new GoogleSheetsService(refreshedAccessToken, settings.googleSheetId);
-          await operation(refreshedService);
-          setSyncStatus('success');
-          setSyncError(null);
-          return;
-        } catch (retryError) {
-          console.error('Google Sheets auth retry error:', retryError);
-          setSyncStatus('error');
-          setSyncError(retryError instanceof Error ? retryError.message : 'Google Sheets 同步失敗，請重新登入 Google');
-          return;
-        }
-      }
-
-      console.error('Google Sheets sync error:', error);
-      setSyncStatus('error');
-      setSyncError(error instanceof Error ? error.message : 'Google Sheets 同步失敗');
-    }
-  };
-
   const visibleChildren = useMemo(
     () => children.filter((child) => adultManagerEnabled || (child.role || 'CHILD') !== 'ADULT'),
     [children, adultManagerEnabled]
@@ -752,55 +630,34 @@ const App: React.FC = () => {
     const fetchData = async () => {
       const resolvedSettings = await loadSettingsFromApi();
       setSettings(resolvedSettings);
-
-      if (sheetsService) {
+      try {
         setSyncStatus('syncing');
-        try {
-          const [loadedChildren, ts, invs, loadedPrices] = await Promise.all([
-            loadChildrenFromApi(),
-            loadTransactionsFromApi(),
-            loadInvestmentsFromApi(),
-            loadPricesFromApi()
-          ]);
-          
-          const finalChildren = (loadedChildren.length > 0 ? loadedChildren : DEFAULT_CHILDREN).map(normalizeChild);
-          setChildren(finalChildren);
-          setSelectedChildId(prevId => {
-            if (finalChildren.some(c => c.id === prevId)) return prevId;
-            return finalChildren[0]?.id || '';
-          });
-          setTransactions(ts.filter(t => t.id)); 
-          setInvestments(invs.filter(i => i.id));
-          setPrices(loadedPrices.filter((p) => p.symbol));
-          localStorage.setItem('prices', JSON.stringify(loadedPrices.filter((p) => p.symbol)));
-          setSyncStatus('success');
-          setSyncError(null);
-        } catch (e) {
-          console.error("Fetch Error:", e);
-          setSyncStatus('error');
-          setSyncError(e instanceof Error ? e.message : '無法讀取 Google Sheet');
-          const localChildren = JSON.parse(localStorage.getItem('children_list') || '[]');
-          const final = (localChildren.length > 0 ? localChildren : DEFAULT_CHILDREN).map((child: Child) => normalizeChild(child));
-          setChildren(final);
-          setSelectedChildId(final[0]?.id || '');
-          setTransactions(getSavedTransactions());
-          setInvestments(getSavedInvestments());
-          setPrices(getSavedPrices());
-        }
-      } else {
         const finalChildren = await loadChildrenFromApi();
         setChildren(finalChildren);
         setSelectedChildId(finalChildren[0]?.id || '');
-        setTransactions(await loadTransactionsFromApi());
-        setInvestments(await loadInvestmentsFromApi());
+        const [ts, invs] = await Promise.all([loadTransactionsFromApi(), loadInvestmentsFromApi()]);
+        setTransactions(ts.filter((t) => t.id));
+        setInvestments(invs.filter((i) => i.id));
         const loadedPrices = await loadPricesFromApi();
-        setPrices(loadedPrices);
-        setSyncStatus('idle');
+        setPrices(loadedPrices.filter((p) => p.symbol));
+        localStorage.setItem('prices', JSON.stringify(loadedPrices.filter((p) => p.symbol)));
+        setSyncStatus('success');
         setSyncError(null);
+      } catch (e) {
+        console.error('Fetch Error:', e);
+        setSyncStatus('error');
+        setSyncError(e instanceof Error ? e.message : '無法讀取 D1 資料');
+        const localChildren = getSavedChildren();
+        const final = (localChildren.length > 0 ? localChildren : DEFAULT_CHILDREN).map((child: Child) => normalizeChild(child));
+        setChildren(final);
+        setSelectedChildId(final[0]?.id || '');
+        setTransactions(getSavedTransactions());
+        setInvestments(getSavedInvestments());
+        setPrices(getSavedPrices());
       }
     };
     fetchData();
-  }, [sheetsService]);
+  }, [user]);
 
   const fetchUserProfile = async (accessToken: string, expiresInSeconds?: number) => {
     const response = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
