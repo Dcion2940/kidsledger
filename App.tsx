@@ -212,14 +212,35 @@ const App: React.FC = () => {
 
       const data = await response.json();
       const d1Transactions = normalize(Array.isArray(data?.transactions) ? data.transactions : []);
-      localStorage.setItem('transactions', JSON.stringify(d1Transactions));
 
       if (!sheetsService) {
+        localStorage.setItem('transactions', JSON.stringify(d1Transactions));
         return d1Transactions;
       }
 
       try {
         const sheetTransactions = (await sheetsService.getTransactions()).filter((item) => item.id);
+        if (!d1Transactions.length && sheetTransactions.length) {
+          const bootstrapResponse = await fetch('/api/transactions/bulk-upsert', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ items: sheetTransactions })
+          });
+
+          if (!bootstrapResponse.ok) {
+            const bootstrapData = await bootstrapResponse.json().catch(() => ({}));
+            throw new Error(bootstrapData?.error || `Transactions bootstrap ${bootstrapResponse.status}`);
+          }
+
+          const sortedSheetTransactions = [...sheetTransactions].sort(
+            (a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id)
+          );
+          localStorage.setItem('transactions', JSON.stringify(sortedSheetTransactions));
+          return sortedSheetTransactions;
+        }
+
         const merged = new Map<string, Transaction>();
         d1Transactions.forEach((item) => merged.set(item.id, item));
         sheetTransactions.forEach((item) => {
@@ -266,14 +287,35 @@ const App: React.FC = () => {
 
       const data = await response.json();
       const d1Investments = normalize(Array.isArray(data?.investments) ? data.investments : []);
-      localStorage.setItem('investments', JSON.stringify(d1Investments));
 
       if (!sheetsService) {
+        localStorage.setItem('investments', JSON.stringify(d1Investments));
         return d1Investments;
       }
 
       try {
         const sheetInvestments = (await sheetsService.getInvestments()).filter((item) => item.id);
+        if (!d1Investments.length && sheetInvestments.length) {
+          const bootstrapResponse = await fetch('/api/investments/bulk-upsert', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ items: sheetInvestments })
+          });
+
+          if (!bootstrapResponse.ok) {
+            const bootstrapData = await bootstrapResponse.json().catch(() => ({}));
+            throw new Error(bootstrapData?.error || `Investments bootstrap ${bootstrapResponse.status}`);
+          }
+
+          const sortedSheetInvestments = [...sheetInvestments].sort(
+            (a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id)
+          );
+          localStorage.setItem('investments', JSON.stringify(sortedSheetInvestments));
+          return sortedSheetInvestments;
+        }
+
         const merged = new Map<string, Investment>();
         d1Investments.forEach((item) => merged.set(item.id, item));
         sheetInvestments.forEach((item) => {
