@@ -1,0 +1,6 @@
+CREATE TABLE IF NOT EXISTS prices (
+  symbol TEXT PRIMARY KEY,
+  company_name TEXT NOT NULL DEFAULT '',
+  price REAL NOT NULL DEFAULT 0,
+  updated_at TEXT NOT NULL DEFAULT ''
+);

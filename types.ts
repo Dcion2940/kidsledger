@@ -25,6 +25,8 @@ export interface Investment {
   price: number;
   totalAmount: number;
   action: 'BUY' | 'SELL';
+  sellStrategy?: 'FIFO' | 'LOWEST_COST' | 'SPECIFIC';
+  sellAllocations?: string;
 }
 
 export interface Price {

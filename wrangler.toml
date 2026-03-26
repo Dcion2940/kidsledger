@@ -1,0 +1,8 @@
+name = "kidsledger"
+compatibility_date = "2026-03-26"
+pages_build_output_dir = "dist"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "kidsledger-db"
+database_id = "d6398891-6dc1-454d-b7d5-6e049fcd5aba"

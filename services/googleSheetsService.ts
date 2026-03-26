@@ -178,7 +178,7 @@ export class GoogleSheetsService {
   }
 
   async getInvestments(): Promise<Investment[]> {
-    const data = await this.request('Investments!A:I');
+    const data = await this.request('Investments!A:K');
     const rows = this.stripHeader(data.values || [], 'ID');
     return rows
       .filter((row: any[]) => row[0])
@@ -191,28 +191,54 @@ export class GoogleSheetsService {
         quantity: Number(row[5]),
         price: Number(row[6]),
         totalAmount: Number(row[7]),
-        action: row[8] as 'BUY' | 'SELL'
+        action: row[8] as 'BUY' | 'SELL',
+        sellStrategy: row[9] || undefined,
+        sellAllocations: row[10] || undefined
       }));
   }
 
   async addInvestment(inv: Investment) {
-    const values = [[inv.id, inv.childId, inv.date, inv.symbol, inv.companyName, inv.quantity, inv.price, inv.totalAmount, inv.action]];
-    await this.request('Investments!A:I', 'APPEND', { values });
+    const values = [[
+      inv.id,
+      inv.childId,
+      inv.date,
+      inv.symbol,
+      inv.companyName,
+      inv.quantity,
+      inv.price,
+      inv.totalAmount,
+      inv.action,
+      inv.sellStrategy || '',
+      inv.sellAllocations || ''
+    ]];
+    await this.request('Investments!A:K', 'APPEND', { values });
   }
 
   async updateInvestment(inv: Investment) {
     const rowIndex = await this.findRowIndex('Investments', inv.id);
     if (rowIndex) {
-      const values = [[inv.id, inv.childId, inv.date, inv.symbol, inv.companyName, inv.quantity, inv.price, inv.totalAmount, inv.action]];
-      await this.request(`Investments!A${rowIndex}:I${rowIndex}`, 'UPDATE', { values });
+      const values = [[
+        inv.id,
+        inv.childId,
+        inv.date,
+        inv.symbol,
+        inv.companyName,
+        inv.quantity,
+        inv.price,
+        inv.totalAmount,
+        inv.action,
+        inv.sellStrategy || '',
+        inv.sellAllocations || ''
+      ]];
+      await this.request(`Investments!A${rowIndex}:K${rowIndex}`, 'UPDATE', { values });
     }
   }
 
   async deleteInvestment(id: string) {
     const rowIndex = await this.findRowIndex('Investments', id);
     if (rowIndex) {
-      const values = [['', '', '', '', '', '', '', '', '']];
-      await this.request(`Investments!A${rowIndex}:I${rowIndex}`, 'UPDATE', { values });
+      const values = [['', '', '', '', '', '', '', '', '', '', '']];
+      await this.request(`Investments!A${rowIndex}:K${rowIndex}`, 'UPDATE', { values });
     }
   }
 
@@ -240,5 +266,11 @@ export class GoogleSheetsService {
       }
       throw error;
     }
+  }
+
+  async addPrice(price: Price) {
+    await this.ensurePricesSheetExists();
+    const values = [[price.symbol.toUpperCase(), price.companyName || '', price.price || '', price.updatedAt || '']];
+    await this.request('Prices!A:D', 'APPEND', { values });
   }
 }

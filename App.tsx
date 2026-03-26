@@ -62,6 +62,16 @@ const normalizeChild = (child: Child): Child => {
 };
 
 const USER_STORAGE_KEY = 'kidsledger_user';
+const BUY_FEE_RATE = 0.001425;
+const SELL_FEE_RATE = 0.004425;
+
+const calculateInvestmentTotal = (quantity: number, price: number, action: 'BUY' | 'SELL') => {
+  if (quantity <= 0 || price <= 0) return 0;
+  const grossAmount = quantity * price;
+  const fee = grossAmount * (action === 'BUY' ? BUY_FEE_RATE : SELL_FEE_RATE);
+  const total = action === 'BUY' ? grossAmount + fee : grossAmount - fee;
+  return Number(total.toFixed(2));
+};
 
 const getSavedUser = (): UserProfile | null => {
   const raw = localStorage.getItem(USER_STORAGE_KEY);
@@ -72,6 +82,30 @@ const getSavedUser = (): UserProfile | null => {
   } catch {
     localStorage.removeItem(USER_STORAGE_KEY);
     return null;
+  }
+};
+
+const getSavedPrices = (): Price[] => {
+  try {
+    return JSON.parse(localStorage.getItem('prices') || '[]');
+  } catch {
+    return [];
+  }
+};
+
+const getSavedTransactions = (): Transaction[] => {
+  try {
+    return JSON.parse(localStorage.getItem('transactions') || '[]');
+  } catch {
+    return [];
+  }
+};
+
+const getSavedInvestments = (): Investment[] => {
+  try {
+    return JSON.parse(localStorage.getItem('investments') || '[]');
+  } catch {
+    return [];
   }
 };
 
@@ -117,6 +151,8 @@ const App: React.FC = () => {
   const [avatarChangeArmed, setAvatarChangeArmed] = useState(false);
   const tokenClientRef = useRef<any>(null);
   const isSilentAuthRef = useRef(false);
+  const pendingTokenRequestRef = useRef<{ resolve: (accessToken: string) => void; reject: (error: Error) => void } | null>(null);
+  const refreshTokenPromiseRef = useRef<Promise<string> | null>(null);
 
   const sheetsService = useMemo(() => {
     if (user && settings.googleSheetId) {
@@ -124,6 +160,242 @@ const App: React.FC = () => {
     }
     return null;
   }, [user, settings.googleSheetId]);
+
+  const loadPricesFromApi = async (): Promise<Price[]> => {
+    try {
+      const response = await fetch('/api/prices');
+      if (!response.ok) {
+        throw new Error(`Prices API ${response.status}`);
+      }
+
+      const data = await response.json();
+      if (!Array.isArray(data?.prices)) {
+        throw new Error('Invalid prices payload');
+      }
+
+      const normalized = data.prices
+        .map((item: any) => ({
+          symbol: String(item?.symbol || '').toUpperCase(),
+          companyName: String(item?.companyName || ''),
+          price: Number(item?.price || 0),
+          updatedAt: String(item?.updatedAt || '')
+        }))
+        .filter((item: Price) => item.symbol);
+
+      localStorage.setItem('prices', JSON.stringify(normalized));
+      return normalized;
+    } catch (error) {
+      console.warn('Unable to load D1 prices, fallback to local cache.', error);
+      return getSavedPrices();
+    }
+  };
+
+  const loadTransactionsFromApi = async (): Promise<Transaction[]> => {
+    const normalize = (items: any[]) =>
+      items
+        .map((item: any) => ({
+          id: String(item?.id || ''),
+          childId: String(item?.childId || ''),
+          date: String(item?.date || ''),
+          type: String(item?.type || '') as TransactionType,
+          category: String(item?.category || ''),
+          amount: Number(item?.amount || 0),
+          description: String(item?.description || '')
+        }))
+        .filter((item: Transaction) => item.id);
+
+    try {
+      const response = await fetch('/api/transactions');
+      if (!response.ok) {
+        throw new Error(`Transactions API ${response.status}`);
+      }
+
+      const data = await response.json();
+      const d1Transactions = normalize(Array.isArray(data?.transactions) ? data.transactions : []);
+      localStorage.setItem('transactions', JSON.stringify(d1Transactions));
+
+      if (!sheetsService) {
+        return d1Transactions;
+      }
+
+      try {
+        const sheetTransactions = (await sheetsService.getTransactions()).filter((item) => item.id);
+        const merged = new Map<string, Transaction>();
+        d1Transactions.forEach((item) => merged.set(item.id, item));
+        sheetTransactions.forEach((item) => {
+          if (!merged.has(item.id)) {
+            merged.set(item.id, item);
+          }
+        });
+        const mergedList = Array.from(merged.values()).sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
+        localStorage.setItem('transactions', JSON.stringify(mergedList));
+        return mergedList;
+      } catch (sheetError) {
+        console.warn('Unable to merge Google Sheet transactions, use D1 only.', sheetError);
+        return d1Transactions;
+      }
+    } catch (error) {
+      console.warn('Unable to load D1 transactions, fallback to local cache.', error);
+      return getSavedTransactions();
+    }
+  };
+
+  const loadInvestmentsFromApi = async (): Promise<Investment[]> => {
+    const normalize = (items: any[]) =>
+      items
+        .map((item: any) => ({
+          id: String(item?.id || ''),
+          childId: String(item?.childId || ''),
+          date: String(item?.date || ''),
+          symbol: String(item?.symbol || '').toUpperCase(),
+          companyName: String(item?.companyName || ''),
+          quantity: Number(item?.quantity || 0),
+          price: Number(item?.price || 0),
+          totalAmount: Number(item?.totalAmount || 0),
+          action: String(item?.action || '') as 'BUY' | 'SELL',
+          sellStrategy: String(item?.sellStrategy || '') || undefined,
+          sellAllocations: String(item?.sellAllocations || '') || undefined
+        }))
+        .filter((item: Investment) => item.id);
+
+    try {
+      const response = await fetch('/api/investments');
+      if (!response.ok) {
+        throw new Error(`Investments API ${response.status}`);
+      }
+
+      const data = await response.json();
+      const d1Investments = normalize(Array.isArray(data?.investments) ? data.investments : []);
+      localStorage.setItem('investments', JSON.stringify(d1Investments));
+
+      if (!sheetsService) {
+        return d1Investments;
+      }
+
+      try {
+        const sheetInvestments = (await sheetsService.getInvestments()).filter((item) => item.id);
+        const merged = new Map<string, Investment>();
+        d1Investments.forEach((item) => merged.set(item.id, item));
+        sheetInvestments.forEach((item) => {
+          if (!merged.has(item.id)) {
+            merged.set(item.id, item);
+          }
+        });
+        const mergedList = Array.from(merged.values()).sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
+        localStorage.setItem('investments', JSON.stringify(mergedList));
+        return mergedList;
+      } catch (sheetError) {
+        console.warn('Unable to merge Google Sheet investments, use D1 only.', sheetError);
+        return d1Investments;
+      }
+    } catch (error) {
+      console.warn('Unable to load D1 investments, fallback to local cache.', error);
+      return getSavedInvestments();
+    }
+  };
+
+  const createInvestmentInD1 = async (investment: Investment) => {
+    const response = await fetch('/api/investments', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(investment)
+    });
+
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data?.error || `Investments API ${response.status}`);
+    }
+  };
+
+  const updateInvestmentInD1 = async (investment: Investment) => {
+    const response = await fetch(`/api/investments/${encodeURIComponent(investment.id)}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(investment)
+    });
+
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data?.error || `Investments API ${response.status}`);
+    }
+  };
+
+  const deleteInvestmentInD1 = async (id: string) => {
+    const response = await fetch(`/api/investments/${encodeURIComponent(id)}`, {
+      method: 'DELETE'
+    });
+
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data?.error || `Investments API ${response.status}`);
+    }
+  };
+
+  const createTransactionInD1 = async (transaction: Transaction) => {
+    const response = await fetch('/api/transactions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(transaction)
+    });
+
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data?.error || `Transactions API ${response.status}`);
+    }
+  };
+
+  const updateTransactionInD1 = async (transaction: Transaction) => {
+    const response = await fetch(`/api/transactions/${encodeURIComponent(transaction.id)}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(transaction)
+    });
+
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data?.error || `Transactions API ${response.status}`);
+    }
+  };
+
+  const deleteTransactionInD1 = async (id: string) => {
+    const response = await fetch(`/api/transactions/${encodeURIComponent(id)}`, {
+      method: 'DELETE'
+    });
+
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data?.error || `Transactions API ${response.status}`);
+    }
+  };
+
+  const ensurePriceInD1 = async (price: Pick<Price, 'symbol' | 'companyName'>) => {
+    try {
+      const response = await fetch('/api/prices/ensure', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          symbol: price.symbol,
+          companyName: price.companyName || ''
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Prices ensure API ${response.status}`);
+      }
+    } catch (error) {
+      console.warn('Unable to ensure D1 price row.', error);
+    }
+  };
 
   useEffect(() => {
     if (user) {
@@ -133,15 +405,43 @@ const App: React.FC = () => {
     }
   }, [user]);
 
-  const runSheetSync = async (operation: () => Promise<void>) => {
+  const isGoogleAuthError = (error: unknown) => {
+    const message = error instanceof Error ? error.message : String(error);
+    return /401|invalid credentials|invalid authentication credentials|unauthenticated|login required/i.test(message);
+  };
+
+  const runSheetSync = async (operation: (service: GoogleSheetsService) => Promise<void>) => {
     if (!sheetsService) return;
 
     setSyncStatus('syncing');
     try {
-      await operation();
+      let activeService = sheetsService;
+      const shouldRefreshBeforeSync = !user?.expiresAt || user.expiresAt < Date.now() + 60_000;
+      if (shouldRefreshBeforeSync) {
+        const refreshedAccessToken = await refreshGoogleAccessToken('');
+        activeService = new GoogleSheetsService(refreshedAccessToken, settings.googleSheetId);
+      }
+
+      await operation(activeService);
       setSyncStatus('success');
       setSyncError(null);
     } catch (error) {
+      if (isGoogleAuthError(error)) {
+        try {
+          const refreshedAccessToken = await refreshGoogleAccessToken('');
+          const refreshedService = new GoogleSheetsService(refreshedAccessToken, settings.googleSheetId);
+          await operation(refreshedService);
+          setSyncStatus('success');
+          setSyncError(null);
+          return;
+        } catch (retryError) {
+          console.error('Google Sheets auth retry error:', retryError);
+          setSyncStatus('error');
+          setSyncError(retryError instanceof Error ? retryError.message : 'Google Sheets 同步失敗，請重新登入 Google');
+          return;
+        }
+      }
+
       console.error('Google Sheets sync error:', error);
       setSyncStatus('error');
       setSyncError(error instanceof Error ? error.message : 'Google Sheets 同步失敗');
@@ -229,9 +529,9 @@ const App: React.FC = () => {
         try {
           const [loadedChildren, ts, invs, loadedPrices] = await Promise.all([
             sheetsService.getChildren(),
-            sheetsService.getTransactions(),
-            sheetsService.getInvestments(),
-            sheetsService.getPrices()
+            loadTransactionsFromApi(),
+            loadInvestmentsFromApi(),
+            loadPricesFromApi()
           ]);
           
           const finalChildren = (loadedChildren.length > 0 ? loadedChildren : DEFAULT_CHILDREN).map(normalizeChild);
@@ -254,18 +554,19 @@ const App: React.FC = () => {
           const final = (localChildren.length > 0 ? localChildren : DEFAULT_CHILDREN).map((child: Child) => normalizeChild(child));
           setChildren(final);
           setSelectedChildId(final[0]?.id || '');
-          setTransactions(JSON.parse(localStorage.getItem('transactions') || '[]'));
-          setInvestments(JSON.parse(localStorage.getItem('investments') || '[]'));
-          setPrices(JSON.parse(localStorage.getItem('prices') || '[]'));
+          setTransactions(getSavedTransactions());
+          setInvestments(getSavedInvestments());
+          setPrices(getSavedPrices());
         }
       } else {
         const localChildren = JSON.parse(localStorage.getItem('children_list') || '[]');
         const finalChildren = (localChildren.length > 0 ? localChildren : DEFAULT_CHILDREN).map((child: Child) => normalizeChild(child));
         setChildren(finalChildren);
         setSelectedChildId(finalChildren[0]?.id || '');
-        setTransactions(JSON.parse(localStorage.getItem('transactions') || '[]'));
-        setInvestments(JSON.parse(localStorage.getItem('investments') || '[]'));
-        setPrices(JSON.parse(localStorage.getItem('prices') || '[]'));
+        setTransactions(await loadTransactionsFromApi());
+        setInvestments(await loadInvestmentsFromApi());
+        const loadedPrices = await loadPricesFromApi();
+        setPrices(loadedPrices);
         setSyncStatus('idle');
         setSyncError(null);
       }
@@ -295,6 +596,34 @@ const App: React.FC = () => {
     setAuthError(null);
   };
 
+  const refreshGoogleAccessToken = async (prompt: '' | 'consent' = ''): Promise<string> => {
+    if (!tokenClientRef.current) {
+      throw new Error('Google 登入服務尚未載入完成，請稍後再試');
+    }
+
+    if (prompt === '' && refreshTokenPromiseRef.current) {
+      return refreshTokenPromiseRef.current;
+    }
+
+    const requestPromise = new Promise<string>((resolve, reject) => {
+      pendingTokenRequestRef.current = { resolve, reject };
+      isSilentAuthRef.current = prompt === '';
+      tokenClientRef.current.requestAccessToken({ prompt });
+    }).finally(() => {
+      pendingTokenRequestRef.current = null;
+      isSilentAuthRef.current = false;
+      if (prompt === '') {
+        refreshTokenPromiseRef.current = null;
+      }
+    });
+
+    if (prompt === '') {
+      refreshTokenPromiseRef.current = requestPromise;
+    }
+
+    return requestPromise;
+  };
+
   useEffect(() => {
     if (!googleClientId) {
       setAuthError('尚未設定 Google Client ID（VITE_GOOGLE_CLIENT_ID）');
@@ -312,9 +641,11 @@ const App: React.FC = () => {
         scope: 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile',
         callback: async (tokenResponse: any) => {
           const isSilentAuth = isSilentAuthRef.current;
-          isSilentAuthRef.current = false;
 
           if (tokenResponse?.error) {
+            if (pendingTokenRequestRef.current) {
+              pendingTokenRequestRef.current.reject(new Error(`Google 授權失敗：${tokenResponse.error}`));
+            }
             if (isSilentAuth) return;
             setAuthError(`Google 登入失敗：${tokenResponse.error}`);
             return;
@@ -322,8 +653,14 @@ const App: React.FC = () => {
 
           try {
             await fetchUserProfile(tokenResponse.access_token, tokenResponse.expires_in);
+            if (pendingTokenRequestRef.current) {
+              pendingTokenRequestRef.current.resolve(tokenResponse.access_token);
+            }
           } catch (error) {
             console.error('Google profile error:', error);
+            if (pendingTokenRequestRef.current) {
+              pendingTokenRequestRef.current.reject(error instanceof Error ? error : new Error('Google 個人資料讀取失敗'));
+            }
             if (!isSilentAuth) {
               setAuthError('Google 登入成功，但取得個人資料失敗');
             }
@@ -333,8 +670,9 @@ const App: React.FC = () => {
 
       const isExpired = !user?.expiresAt || user.expiresAt < Date.now() + 60_000;
       if (isExpired) {
-        isSilentAuthRef.current = true;
-        tokenClientRef.current.requestAccessToken({ prompt: '' });
+        refreshGoogleAccessToken('').catch(() => {
+          // 靜默刷新失敗時，保留現況，讓使用者在需要時手動重新登入。
+        });
       }
 
       setAuthError(null);
@@ -366,8 +704,9 @@ const App: React.FC = () => {
       return;
     }
 
-    isSilentAuthRef.current = false;
-    tokenClientRef.current.requestAccessToken({ prompt: 'consent' });
+    refreshGoogleAccessToken('consent').catch((error) => {
+      setAuthError(error instanceof Error ? error.message : 'Google 登入失敗');
+    });
   };
 
   const handleSaveLocalClientId = () => {
@@ -427,7 +766,7 @@ const App: React.FC = () => {
     setIsAddingChild(false);
     localStorage.setItem('children_list', JSON.stringify(updated));
     
-    await runSheetSync(() => sheetsService!.syncChildren(updated));
+    await runSheetSync((service) => service.syncChildren(updated));
     
     if (!selectedChildId) setSelectedChildId(newChild.id);
   };
@@ -452,7 +791,7 @@ const App: React.FC = () => {
     setChildren(updated);
     localStorage.setItem('children_list', JSON.stringify(updated));
     if (sheetsService) {
-      await runSheetSync(() => sheetsService.syncChildren(updated));
+      await runSheetSync((service) => service.syncChildren(updated));
     }
   };
 
@@ -475,7 +814,7 @@ const App: React.FC = () => {
     }
     
     if (sheetsService) {
-      await runSheetSync(() => sheetsService.syncChildren(updated));
+      await runSheetSync((service) => service.syncChildren(updated));
     }
     setChildToDelete(null);
   };
@@ -498,8 +837,8 @@ const App: React.FC = () => {
     XLSX.utils.book_append_sheet(workbook, transactionsSheet, 'Transactions');
 
     const investmentsSheet = XLSX.utils.aoa_to_sheet([
-      ['ID', 'ChildId', 'Date', 'Symbol', 'CompanyName', 'Quantity', 'Price', 'TotalAmount', 'Action'],
-      ...investments.map((i) => [i.id, i.childId, i.date, i.symbol, i.companyName, i.quantity, i.price, i.totalAmount, i.action])
+      ['ID', 'ChildId', 'Date', 'Symbol', 'CompanyName', 'Quantity', 'Price', 'TotalAmount', 'Action', 'SellStrategy', 'SellAllocations'],
+      ...investments.map((i) => [i.id, i.childId, i.date, i.symbol, i.companyName, i.quantity, i.price, i.totalAmount, i.action, i.sellStrategy || '', i.sellAllocations || ''])
     ]);
     XLSX.utils.book_append_sheet(workbook, investmentsSheet, 'Investments');
 
@@ -516,14 +855,30 @@ const App: React.FC = () => {
     const newList = [t, ...transactions];
     setTransactions(newList);
     localStorage.setItem('transactions', JSON.stringify(newList));
-    if (sheetsService) await runSheetSync(() => sheetsService.addTransaction(t));
+    try {
+      await createTransactionInD1(t);
+      setSyncStatus('success');
+      setSyncError(null);
+    } catch (error) {
+      console.error('Create transaction in D1 failed:', error);
+      setSyncStatus('error');
+      setSyncError(error instanceof Error ? error.message : '交易同步到 D1 失敗');
+    }
   };
 
   const handleDeleteTransaction = async (id: string) => {
     const updated = transactions.filter(t => t.id !== id);
     setTransactions(updated);
     localStorage.setItem('transactions', JSON.stringify(updated));
-    if (sheetsService) await runSheetSync(() => sheetsService.deleteTransaction(id));
+    try {
+      await deleteTransactionInD1(id);
+      setSyncStatus('success');
+      setSyncError(null);
+    } catch (error) {
+      console.error('Delete transaction in D1 failed:', error);
+      setSyncStatus('error');
+      setSyncError(error instanceof Error ? error.message : '交易刪除同步到 D1 失敗');
+    }
   };
 
   const handleUpdateTransaction = async (e: React.FormEvent) => {
@@ -532,7 +887,15 @@ const App: React.FC = () => {
     const updated = transactions.map(t => t.id === editingTransaction.id ? editingTransaction : t);
     setTransactions(updated);
     localStorage.setItem('transactions', JSON.stringify(updated));
-    if (sheetsService) await runSheetSync(() => sheetsService.updateTransaction(editingTransaction));
+    try {
+      await updateTransactionInD1(editingTransaction);
+      setSyncStatus('success');
+      setSyncError(null);
+    } catch (error) {
+      console.error('Update transaction in D1 failed:', error);
+      setSyncStatus('error');
+      setSyncError(error instanceof Error ? error.message : '交易更新同步到 D1 失敗');
+    }
     setEditingTransaction(null);
   };
 
@@ -552,7 +915,15 @@ const App: React.FC = () => {
     const updated = investments.map(i => i.id === editingInvestment.id ? editingInvestment : i);
     setInvestments(updated);
     localStorage.setItem('investments', JSON.stringify(updated));
-    if (sheetsService) await runSheetSync(() => sheetsService.updateInvestment(editingInvestment));
+    try {
+      await updateInvestmentInD1(editingInvestment);
+      setSyncStatus('success');
+      setSyncError(null);
+    } catch (error) {
+      console.error('Update investment in D1 failed:', error);
+      setSyncStatus('error');
+      setSyncError(error instanceof Error ? error.message : '投資更新同步到 D1 失敗');
+    }
     setEditingInvestment(null);
   };
 
@@ -570,7 +941,15 @@ const App: React.FC = () => {
 
     setInvestments(updated);
     localStorage.setItem('investments', JSON.stringify(updated));
-    if (sheetsService) await runSheetSync(() => sheetsService.deleteInvestment(id));
+    try {
+      await deleteInvestmentInD1(id);
+      setSyncStatus('success');
+      setSyncError(null);
+    } catch (error) {
+      console.error('Delete investment in D1 failed:', error);
+      setSyncStatus('error');
+      setSyncError(error instanceof Error ? error.message : '投資刪除同步到 D1 失敗');
+    }
   };
 
   const validateInvestmentSequence = (allInvestments: Investment[], childId: string): string | null => {
@@ -607,14 +986,73 @@ const App: React.FC = () => {
       throw new Error(validationError);
     }
 
+    const normalizedSymbol = inv.symbol.toUpperCase();
+    const shouldCreatePrice =
+      inv.action === 'BUY' &&
+      normalizedSymbol &&
+      !prices.some((price) => price.symbol.toUpperCase() === normalizedSymbol);
+
     setInvestments(candidate);
     localStorage.setItem('investments', JSON.stringify(candidate));
-    if (sheetsService) await runSheetSync(() => sheetsService.addInvestment(inv));
+
+    if (shouldCreatePrice) {
+      const newPrice: Price = {
+        symbol: normalizedSymbol,
+        companyName: inv.companyName || normalizedSymbol,
+        price: 0,
+        updatedAt: ''
+      };
+      const updatedPrices = [...prices, newPrice];
+      setPrices(updatedPrices);
+      localStorage.setItem('prices', JSON.stringify(updatedPrices));
+      await ensurePriceInD1({
+        symbol: normalizedSymbol,
+        companyName: inv.companyName || normalizedSymbol
+      });
+    }
+
+    try {
+      await createInvestmentInD1(inv);
+      setSyncStatus('success');
+      setSyncError(null);
+    } catch (error) {
+      console.error('Create investment in D1 failed:', error);
+      setSyncStatus('error');
+      setSyncError(error instanceof Error ? error.message : '投資同步到 D1 失敗');
+    }
   };
 
   const activeChild = visibleChildren.find(c => c.id === selectedChildId) || visibleChildren[0] || DEFAULT_CHILDREN[0];
   const childTransactions = transactions.filter(t => t.childId === selectedChildId);
   const childInvestments = investments.filter(i => i.childId === selectedChildId);
+  const investedInMarket = Array.from(
+    childInvestments
+      .slice()
+      .sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id))
+      .reduce((grouped, investment) => {
+        const symbol = investment.symbol.toUpperCase();
+        const current = grouped.get(symbol) || { shares: 0, costBasis: 0 };
+
+        if (investment.action === 'BUY') {
+          current.shares += investment.quantity;
+          current.costBasis += investment.totalAmount;
+        } else if (current.shares > 0 && investment.quantity > 0) {
+          const averageCost = current.costBasis / current.shares;
+          const soldCost = averageCost * investment.quantity;
+          current.shares = Math.max(0, current.shares - investment.quantity);
+          current.costBasis = Math.max(0, current.costBasis - soldCost);
+        }
+
+        if (current.shares <= 0) {
+          current.shares = 0;
+          current.costBasis = 0;
+        }
+
+        grouped.set(symbol, current);
+        return grouped;
+      }, new Map<string, { shares: number; costBasis: number }>())
+      .values()
+  ).reduce((sum, holding) => sum + Math.round(holding.costBasis), 0);
 
   const stats = {
     income: childTransactions.filter(t => t.type === TransactionType.INCOME).reduce((s, t) => s + t.amount, 0),
@@ -625,9 +1063,8 @@ const App: React.FC = () => {
   };
   const balance = stats.income - stats.expense - stats.investment;
   const assetDistributionData = [
-    { name: '收入', value: stats.income, color: '#10b981' },
-    { name: '支出', value: stats.expense, color: '#f43f5e' },
-    { name: '投資', value: stats.investment, color: '#f59e0b' }
+    { name: '可用餘額', value: Math.max(Math.round(balance), 0), color: '#10b981' },
+    { name: '股市中資金', value: Math.max(Math.round(investedInMarket), 0), color: '#f59e0b' }
   ];
   const assetDistributionTotal = assetDistributionData.reduce((sum, item) => sum + item.value, 0);
 
@@ -769,19 +1206,19 @@ const App: React.FC = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 <div className="bg-gradient-to-br from-blue-600 to-indigo-700 p-8 rounded-[2.5rem] text-white shadow-xl">
                   <p className="text-blue-100 text-sm font-bold mb-2 uppercase tracking-widest">可用餘額</p>
-                  <h4 className="text-4xl font-black">${balance.toLocaleString()}</h4>
+                  <h4 className="text-4xl font-black">${Math.round(balance).toLocaleString()}</h4>
                 </div>
                 <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100">
                   <p className="text-slate-400 text-sm font-bold uppercase tracking-widest">累積收入</p>
-                  <h4 className="text-3xl font-black text-slate-800">${stats.income.toLocaleString()}</h4>
+                  <h4 className="text-3xl font-black text-slate-800">${Math.round(stats.income).toLocaleString()}</h4>
                 </div>
                 <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100">
                   <p className="text-slate-400 text-sm font-bold uppercase tracking-widest">累積支出</p>
-                  <h4 className="text-3xl font-black text-slate-800">${stats.expense.toLocaleString()}</h4>
+                  <h4 className="text-3xl font-black text-slate-800">${Math.round(stats.expense).toLocaleString()}</h4>
                 </div>
                 <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100">
-                  <p className="text-slate-400 text-sm font-bold uppercase tracking-widest">投資額</p>
-                  <h4 className="text-3xl font-black text-slate-800">${stats.investment.toLocaleString()}</h4>
+                  <p className="text-slate-400 text-sm font-bold uppercase tracking-widest">股市中資金</p>
+                  <h4 className="text-3xl font-black text-slate-800">${Math.round(investedInMarket).toLocaleString()}</h4>
                 </div>
               </div>
 
@@ -840,7 +1277,15 @@ const App: React.FC = () => {
                                     <button onClick={() => setEditingTransaction(t)} className="p-2 text-slate-400 hover:text-blue-600 bg-white rounded-xl shadow-sm border border-slate-100">
                                       <Pencil className="w-4 h-4" />
                                     </button>
-                                    <button onClick={() => handleDeleteTransaction(t.id)} className="p-2 text-slate-400 hover:text-rose-600 bg-white rounded-xl shadow-sm border border-slate-100">
+                                    <button
+                                      onClick={() => {
+                                        if (!window.confirm(`確定要刪除「${t.description}」這筆帳目嗎？此動作無法撤回。`)) {
+                                          return;
+                                        }
+                                        handleDeleteTransaction(t.id);
+                                      }}
+                                      className="p-2 text-slate-400 hover:text-rose-600 bg-white rounded-xl shadow-sm border border-slate-100"
+                                    >
                                       <Trash2 className="w-4 h-4" />
                                     </button>
                                   </div>
@@ -860,7 +1305,15 @@ const App: React.FC = () => {
                                     <button onClick={() => setEditingTransaction(t)} className="p-2 text-slate-400 hover:text-blue-600 bg-white rounded-xl shadow-sm border border-slate-100">
                                       <Pencil className="w-4 h-4" />
                                     </button>
-                                    <button onClick={() => handleDeleteTransaction(t.id)} className="p-2 text-slate-400 hover:text-rose-600 bg-white rounded-xl shadow-sm border border-slate-100">
+                                    <button
+                                      onClick={() => {
+                                        if (!window.confirm(`確定要刪除「${t.description}」這筆帳目嗎？此動作無法撤回。`)) {
+                                          return;
+                                        }
+                                        handleDeleteTransaction(t.id);
+                                      }}
+                                      className="p-2 text-slate-400 hover:text-rose-600 bg-white rounded-xl shadow-sm border border-slate-100"
+                                    >
                                       <Trash2 className="w-4 h-4" />
                                     </button>
                                   </div>
@@ -884,7 +1337,7 @@ const App: React.FC = () => {
                             <Cell key={item.name} fill={item.color} />
                           ))}
                         </Pie>
-                        <Tooltip />
+                        <Tooltip formatter={(value: number) => `${Math.round(Number(value) || 0).toLocaleString()}`} />
                       </PieChart>
                     </ResponsiveContainer>
                   </div>
@@ -1262,7 +1715,14 @@ const App: React.FC = () => {
               </div>
               <div>
                 <label className="text-xs font-black text-slate-400 uppercase mb-2 block">動作</label>
-                <select value={editingInvestment.action} onChange={e => setEditingInvestment({...editingInvestment, action: e.target.value as 'BUY' | 'SELL'})} className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl p-4 font-black text-slate-900 focus:outline-none">
+                <select value={editingInvestment.action} onChange={e => {
+                  const action = e.target.value as 'BUY' | 'SELL';
+                  setEditingInvestment({
+                    ...editingInvestment,
+                    action,
+                    totalAmount: calculateInvestmentTotal(editingInvestment.quantity, editingInvestment.price, action)
+                  });
+                }} className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl p-4 font-black text-slate-900 focus:outline-none">
                   <option value="BUY">買入</option>
                   <option value="SELL">賣出</option>
                 </select>
@@ -1271,14 +1731,14 @@ const App: React.FC = () => {
                 <label className="text-xs font-black text-slate-400 uppercase mb-2 block">股數</label>
                 <input type="number" value={editingInvestment.quantity} onChange={e => {
                   const q = Number(e.target.value);
-                  setEditingInvestment({...editingInvestment, quantity: q, totalAmount: q * editingInvestment.price});
+                  setEditingInvestment({...editingInvestment, quantity: q, totalAmount: calculateInvestmentTotal(q, editingInvestment.price, editingInvestment.action)});
                 }} className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl p-4 font-black text-slate-900 focus:outline-none" />
               </div>
               <div>
                 <label className="text-xs font-black text-slate-400 uppercase mb-2 block">單價</label>
                 <input type="number" value={editingInvestment.price} onChange={e => {
                   const p = Number(e.target.value);
-                  setEditingInvestment({...editingInvestment, price: p, totalAmount: p * editingInvestment.quantity});
+                  setEditingInvestment({...editingInvestment, price: p, totalAmount: calculateInvestmentTotal(editingInvestment.quantity, p, editingInvestment.action)});
                 }} className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl p-4 font-black text-slate-900 focus:outline-none" />
               </div>
               <div className="col-span-2">
