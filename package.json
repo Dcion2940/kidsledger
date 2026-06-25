@@ -3,14 +3,21 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "vite",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "check": "npm run typecheck && npm run build",
     "build": "vite build",
+    "build:pages": "npm run build",
     "build:gh": "VITE_BASE_PATH=/kidsledger/ vite build",
     "build:cf": "VITE_BASE_PATH=/ vite build",
     "preview": "vite preview",
     "predeploy": "npm run build:gh",
-    "deploy": "gh-pages -d dist"
+    "deploy": "gh-pages -d dist",
+    "deploy:pages": "wrangler pages deploy dist --project-name kidsledger --branch main"
   },
   "dependencies": {
     "react": "^19.2.4",

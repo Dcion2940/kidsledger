@@ -27,7 +27,15 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
     env.DB.prepare('SELECT id, child_id, date, type, category, amount, description, updated_at FROM transactions ORDER BY date DESC, id DESC').all(),
     env.DB.prepare('SELECT id, child_id, date, symbol, company_name, quantity, price, total_amount, action, sell_strategy, sell_allocations, updated_at FROM investments ORDER BY date DESC, id DESC').all(),
     env.DB.prepare('SELECT symbol, company_name, price, updated_at FROM prices ORDER BY symbol ASC').all(),
-    env.DB.prepare('SELECT id, google_sheet_id, ai_mentor_enabled, ai_api_link, updated_at FROM app_settings WHERE id = ?').bind('global').first()
+    env.DB.prepare(
+      `
+        SELECT id, ai_mentor_enabled, ai_api_link, idle_lock_minutes,
+               telegram_chat_id, telegram_notify_on_create, telegram_notify_on_start,
+               telegram_bot_token_encrypted, updated_at
+        FROM app_settings
+        WHERE id = ?
+      `
+    ).bind('global').first()
   ]);
 
   const children = (childrenRes.results || []).map((row: any) => ({
@@ -75,16 +83,24 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
   const settings = settingsRow
     ? {
         id: String((settingsRow as any).id || 'global'),
-        googleSheetId: String((settingsRow as any).google_sheet_id || ''),
         aiMentorEnabled: Number((settingsRow as any).ai_mentor_enabled ?? 1) === 1,
         aiApiLink: String((settingsRow as any).ai_api_link || ''),
+        idleLockMinutes: Math.max(1, Number((settingsRow as any).idle_lock_minutes ?? 10) || 10),
+        telegramChatId: String((settingsRow as any).telegram_chat_id || ''),
+        telegramNotifyOnCreate: Number((settingsRow as any).telegram_notify_on_create ?? 0) === 1,
+        telegramNotifyOnStart: Number((settingsRow as any).telegram_notify_on_start ?? 0) === 1,
+        telegramBotTokenConfigured: !!String((settingsRow as any).telegram_bot_token_encrypted || '').trim(),
         updatedAt: String((settingsRow as any).updated_at || '')
       }
     : {
         id: 'global',
-        googleSheetId: '',
         aiMentorEnabled: true,
         aiApiLink: '',
+        idleLockMinutes: 10,
+        telegramChatId: '',
+        telegramNotifyOnCreate: false,
+        telegramNotifyOnStart: false,
+        telegramBotTokenConfigured: false,
         updatedAt: ''
       };
 

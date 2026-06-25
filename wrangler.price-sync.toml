@@ -1,0 +1,14 @@
+name = "kidsledger-price-sync"
+main = "workers/price-sync-cron.ts"
+compatibility_date = "2026-04-10"
+
+[triggers]
+crons = [
+  "0,10,20,30,40,50 1-5 * * MON-FRI",
+  "0 6 * * MON-FRI"
+]
+
+[vars]
+PRICES_API_URL = "https://kidsledger.pages.dev/api/prices"
+HOLIDAY_SCHEDULE_URL = "https://www.twse.com.tw/holidaySchedule/holidaySchedule"
+YAHOO_QUOTE_URL = "https://query1.finance.yahoo.com/v7/finance/quote"

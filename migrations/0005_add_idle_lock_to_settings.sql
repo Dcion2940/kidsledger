@@ -1,0 +1,1 @@
+ALTER TABLE app_settings ADD COLUMN idle_lock_minutes INTEGER NOT NULL DEFAULT 10;

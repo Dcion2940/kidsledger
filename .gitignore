@@ -11,6 +11,19 @@ node_modules
 dist
 dist-ssr
 *.local
+.env
+.env.local
+.env.*.local
+.dev.vars
+.dev.vars.*
+.wrangler
+output_to_user
+codex-last-message*.txt
+.telegram_codex_summary.md
+Sales_SOP_Assistants
+tmp/
+scripts/__pycache__/
+*.pyc
 
 # Editor directories and files
 .vscode/*

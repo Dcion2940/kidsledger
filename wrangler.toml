@@ -2,6 +2,9 @@ name = "kidsledger"
 compatibility_date = "2026-03-26"
 pages_build_output_dir = "dist"
 
+[vars]
+PRICE_SYNC_TRIGGER_URL = "https://kidsledger-price-sync.dcion2940.workers.dev"
+
 [[d1_databases]]
 binding = "DB"
 database_name = "kidsledger-db"

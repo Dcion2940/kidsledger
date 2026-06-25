@@ -5,12 +5,21 @@ interface Env {
 interface InvestmentPayload {
   childId?: string;
   date?: string;
+  market?: string;
   symbol?: string;
   companyName?: string;
   quantity?: number;
   price?: number;
   totalAmount?: number;
   action?: string;
+  broker?: string;
+  orderChannel?: string;
+  tradeCurrency?: string;
+  settlementCurrency?: string;
+  fxRateToTwd?: number;
+  feeAmount?: number;
+  feeCurrency?: string;
+  netAmountTwd?: number;
   sellStrategy?: string;
   sellAllocations?: string;
 }
@@ -26,22 +35,30 @@ const json = (status: number, body: Record<string, unknown>) =>
 const validatePayload = (payload: InvestmentPayload) => {
   const childId = String(payload.childId || '').trim();
   const date = String(payload.date || '').trim();
+  const market = String(payload.market || 'TW').trim().toUpperCase();
   const symbol = String(payload.symbol || '').trim().toUpperCase();
   const companyName = String(payload.companyName || '').trim();
   const quantity = Number(payload.quantity);
   const price = Number(payload.price);
   const totalAmount = Number(payload.totalAmount);
   const action = String(payload.action || '').trim();
+  const fxRateToTwd = Number(payload.fxRateToTwd);
+  const feeAmount = Number(payload.feeAmount || 0);
+  const netAmountTwd = Number(payload.netAmountTwd);
   const sellStrategy = String(payload.sellStrategy || '').trim();
   const sellAllocations = String(payload.sellAllocations || '').trim();
 
   if (!childId) return 'Child id is required';
   if (!date) return 'Date is required';
+  if (market !== 'TW' && market !== 'US') return 'Market must be TW or US';
   if (!symbol) return 'Symbol is required';
   if (!companyName) return 'Company name is required';
   if (!Number.isFinite(quantity) || quantity <= 0) return 'Quantity must be greater than 0';
   if (!Number.isFinite(price) || price <= 0) return 'Price must be greater than 0';
   if (!Number.isFinite(totalAmount)) return 'Total amount must be a valid number';
+  if (market === 'US' && (!Number.isFinite(fxRateToTwd) || fxRateToTwd <= 0)) return 'FX rate must be greater than 0 for US investments';
+  if (!Number.isFinite(feeAmount) || feeAmount < 0) return 'Fee amount must be 0 or greater';
+  if (!Number.isFinite(netAmountTwd) || netAmountTwd < 0) return 'Net TWD amount must be a valid number';
   if (action !== 'BUY' && action !== 'SELL') return 'Action must be BUY or SELL';
   if (sellStrategy && !['FIFO', 'LOWEST_COST', 'SPECIFIC'].includes(sellStrategy)) {
     return 'Invalid sell strategy';
@@ -80,19 +97,28 @@ export const onRequestPut: PagesFunction<Env> = async ({ request, env, params })
   const result = await env.DB.prepare(
     `
       UPDATE investments
-      SET child_id = ?, date = ?, symbol = ?, company_name = ?, quantity = ?, price = ?, total_amount = ?, action = ?, sell_strategy = ?, sell_allocations = ?, updated_at = ?
+      SET child_id = ?, date = ?, market = ?, symbol = ?, company_name = ?, quantity = ?, price = ?, total_amount = ?, action = ?, broker = ?, order_channel = ?, trade_currency = ?, settlement_currency = ?, fx_rate_to_twd = ?, fee_amount = ?, fee_currency = ?, net_amount_twd = ?, sell_strategy = ?, sell_allocations = ?, updated_at = ?
       WHERE id = ?
     `
   )
     .bind(
       String(payload.childId).trim(),
       String(payload.date).trim(),
+      String(payload.market || 'TW').trim().toUpperCase(),
       String(payload.symbol).trim().toUpperCase(),
       String(payload.companyName).trim(),
       Number(payload.quantity),
       Number(payload.price),
       Number(payload.totalAmount),
       String(payload.action).trim(),
+      String(payload.broker || '').trim(),
+      String(payload.orderChannel || '').trim(),
+      String(payload.tradeCurrency || '').trim().toUpperCase(),
+      String(payload.settlementCurrency || 'TWD').trim().toUpperCase(),
+      Number(payload.fxRateToTwd || 0),
+      Number(payload.feeAmount || 0),
+      String(payload.feeCurrency || '').trim().toUpperCase(),
+      Number(payload.netAmountTwd || 0),
       String(payload.sellStrategy || '').trim(),
       String(payload.sellAllocations || '').trim(),
       now,

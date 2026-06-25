@@ -1,0 +1,9 @@
+name = "kidsledger-calendar-rollover"
+main = "workers/calendar-rollover-cron.ts"
+compatibility_date = "2026-04-01"
+
+[triggers]
+crons = ["0 16 * * *"]
+
+[vars]
+ROLLOVER_API_URL = "https://kidsledger.pages.dev/api/calendar/rollover/process-due"
