@@ -29,3 +29,14 @@ Vault path:
 
 - Avoid destructive repo cleanup unless the user explicitly asks
 - Do not overwrite existing vault notes without checking first
+
+## Session Wrap-up
+
+- Treat `收工` as both a product wrap-up and a git hygiene checkpoint
+- Before ending a meaningful feature session, always check `git status`
+- Do not leave deployed or user-validated changes uncommitted without explicitly recording that decision
+- Prefer ending each completed feature or safe baseline with:
+  - verification complete
+  - deployment state confirmed
+  - one intentional commit or an explicit note about why commit is deferred
+- If the worktree is intentionally left dirty, summarize exactly what remains and why before ending the session
